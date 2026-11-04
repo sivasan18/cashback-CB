@@ -9,14 +9,14 @@ import {
 import { supabase } from '@/lib/supabase'
 import { calculateCashback, formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
-import { useDisplayStore, type PaymentMethod } from '@/store/displayStore'
+import { useDisplayStore, type PaymentMethod, type PaymentVerificationStatus } from '@/store/displayStore'
 import { buildUPILink, generateQRCodeURL, SHOP_UPI_CONFIG } from '@/lib/upi'
 import { QRCodeSVG } from 'qrcode.react'
 import { sendNotification } from '@/lib/notifications'
 import toast from 'react-hot-toast'
 import type { Customer, ServiceCategory } from '@/types'
 
-type Step = 'mobile' | 'customer' | 'billing' | 'payment' | 'confirm' | 'done'
+type Step = 'mobile' | 'customer' | 'billing' | 'payment' | 'done'
 
 interface BillSummary {
   billAmount: number
@@ -53,8 +53,13 @@ export default function BillingPage() {
   const [userEditedRedeem, setUserEditedRedeem] = useState(false)
   const [notes, setNotes] = useState('')
 
-  // Payment method
+  // Payment method & verification
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
+  const [cashReceived, setCashReceived] = useState('')
+  const [upiVerified, setUpiVerified] = useState(false)
+  const [upiRef, setUpiRef] = useState('')
+  const [showAdminQR, setShowAdminQR] = useState(false)
+  const [paymentStatus, setPaymentStatus] = useState<PaymentVerificationStatus>('awaiting_payment')
 
   // Customer display
   const { broadcast, resetDisplay } = useDisplayStore()
@@ -153,6 +158,33 @@ export default function BillingPage() {
     setUserEditedRedeem(false)
     setNotes('')
     setSummary(null)
+    setCashReceived('')
+    setUpiVerified(false)
+    setUpiRef('')
+    setPaymentStatus('awaiting_payment')
+
+    // Broadcast customer info to display immediately
+    broadcast({
+      mode: 'customer-selected',
+      customerName: selected.name,
+      customerMobile: selected.mobile,
+      shopName: settings?.shop_name || 'Smart Cashback',
+      serviceCategory: serviceCategory || 'Standard Services',
+      billAmount: 0,
+      cashbackRedeemed: 0,
+      amountPayable: 0,
+      cashbackEarned: 0,
+      availableBalance: selected.cashback_balance,
+      newWalletBalance: selected.cashback_balance,
+      cashbackPercentage: settings?.cashback_percentage || 2,
+      paymentMethod: null,
+      paymentStatus: 'awaiting_payment',
+      merchantUpiId: settings?.merchant_upi_id || '7708481818@upi',
+      merchantDisplayName: settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback',
+      upiLink: null,
+      upiQRUrl: null,
+      transactionId: null,
+    })
   }
 
   const handleMobileSearch = useCallback(async () => {
@@ -269,19 +301,22 @@ export default function BillingPage() {
 
   // Real-time broadcast to customer display during billing input
   useEffect(() => {
-    if (displayActive && step === 'billing' && customer) {
+    if (step === 'billing' && customer) {
       broadcast({
-        mode: 'billing',
+        mode: 'customer-selected',
         customerName: customer.name,
         customerMobile: customer.mobile,
-        shopName: settings?.shop_name ?? 'Smart Cashback Shop',
-        serviceCategory,
+        shopName: settings?.shop_name || 'Smart Cashback',
+        serviceCategory: serviceCategory || 'Standard Services',
         billAmount: billNum,
         cashbackRedeemed: currentRedeemNum,
         amountPayable: liveAmountPaid,
         cashbackEarned: liveCashbackEarned,
+        availableBalance: customer.cashback_balance,
         newWalletBalance: liveProjectedBalance,
         cashbackPercentage: cbPct,
+        merchantUpiId: settings?.merchant_upi_id || '7708481818@upi',
+        merchantDisplayName: settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback',
       })
     }
   }, [
@@ -296,8 +331,20 @@ export default function BillingPage() {
     liveProjectedBalance,
     cbPct,
     settings?.shop_name,
+    settings?.merchant_upi_id,
+    settings?.merchant_display_name,
     broadcast,
   ])
+
+  const handleOpenCustomerDisplay = () => {
+    setDisplayActive(true)
+    window.open(
+      '/customer-display',
+      'smart-cashback-customer-display',
+      'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
+    )
+    toast.success('Customer display opened! Move to your external monitor.')
+  }
 
   const handleCalculate = () => {
     if (isNaN(billNum) || billNum <= 0) {
@@ -319,96 +366,101 @@ export default function BillingPage() {
     }
 
     setSummary(result)
+    setPaymentMethod('cash')
+    setPaymentStatus('awaiting_payment')
+    setCashReceived('')
+    setUpiVerified(false)
+    setUpiRef('')
+    setShowAdminQR(false)
     setStep('payment')
 
-    // Broadcast billing info to customer display
-    if (displayActive) {
-      broadcast({
-        mode: 'billing',
-        customerName: customer?.name ?? '',
-        customerMobile: customer?.mobile ?? '',
-        shopName: settings?.shop_name ?? 'Smart Cashback Shop',
-        serviceCategory,
-        billAmount: result.billAmount,
-        cashbackRedeemed: result.cashbackToRedeem,
-        amountPayable: result.amountPaid,
-        cashbackEarned: result.cashbackEarned,
-        newWalletBalance: result.newBalance,
-        cashbackPercentage: cbPct,
-        paymentMethod: null,
-        upiLink: null,
-        upiQRUrl: null,
-        transactionId: null,
-      })
-    }
+    // Broadcast payment selection (default Cash)
+    broadcast({
+      mode: 'payment-selection',
+      customerName: customer?.name ?? '',
+      customerMobile: customer?.mobile ?? '',
+      shopName: settings?.shop_name || 'Smart Cashback',
+      serviceCategory: serviceCategory || 'Standard Services',
+      billAmount: result.billAmount,
+      cashbackRedeemed: result.cashbackToRedeem,
+      amountPayable: result.amountPaid,
+      cashbackEarned: result.cashbackEarned,
+      availableBalance: customer?.cashback_balance ?? 0,
+      newWalletBalance: result.newBalance,
+      cashbackPercentage: cbPct,
+      paymentMethod: 'cash',
+      paymentStatus: 'awaiting_payment',
+      merchantUpiId: settings?.merchant_upi_id || '7708481818@upi',
+      merchantDisplayName: settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback',
+      upiLink: null,
+      upiQRUrl: null,
+      transactionId: null,
+    })
   }
 
   // ─── Payment Method Selection & QR Generation ──────────────────────
   const handleSelectPaymentMethod = (method: PaymentMethod) => {
     setPaymentMethod(method)
+    setPaymentStatus('awaiting_payment')
+    setUpiVerified(false)
 
-    if (displayActive && summary && customer) {
+    if (summary && customer) {
       let upiLink: string | null = null
-      let upiQRUrl: string | null = null
 
       if (method === 'upi') {
+        const vpa = settings?.merchant_upi_id || '7708481818@upi'
+        const merchantName = settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback'
         upiLink = buildUPILink({
-          payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
-          payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
+          payeeVPA: vpa,
+          payeeName: merchantName,
           amount: summary.amountPaid,
           transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
         })
-        upiQRUrl = generateQRCodeURL(upiLink, 300)
       }
 
       broadcast({
-        mode: 'payment-pending',
+        mode: 'payment-selection',
         paymentMethod: method,
+        paymentStatus: 'awaiting_payment',
+        merchantUpiId: settings?.merchant_upi_id || '7708481818@upi',
+        merchantDisplayName: settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback',
         upiLink,
-        upiQRUrl,
+        amountPayable: summary.amountPaid,
+        cashbackEarned: summary.cashbackEarned,
       })
     }
   }
 
-  const handleProceedToConfirm = () => {
-    if (!summary) return
-
-    // Generate UPI link if payment method is UPI
-    let upiLink: string | null = null
-    let upiQRUrl: string | null = null
-
-    if (paymentMethod === 'upi' && customer) {
-      upiLink = buildUPILink({
-        payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
-        payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
-        amount: summary.amountPaid,
-        transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
-      })
-      upiQRUrl = generateQRCodeURL(upiLink, 300)
-    }
-
-    // Broadcast payment pending to customer display
-    if (displayActive) {
-      broadcast({
-        mode: 'payment-pending',
-        paymentMethod,
-        upiLink,
-        upiQRUrl,
-      })
-    }
-
-    setStep('confirm')
+  const handlePaymentFailed = () => {
+    setPaymentStatus('payment_failed')
+    setUpiVerified(false)
+    toast.error('Payment marked as Failed / Cancelled. Transaction was NOT saved and cashback was NOT credited.')
+    broadcast({
+      paymentStatus: 'payment_failed',
+    })
   }
 
   // ─────────────────────────────────────────────────────────────
-  // TRANSACTION SUBMISSION: Unique key per bill & Immediate refresh
+  // TRANSACTION SUBMISSION: Verified execution & Customer display updates
   // ─────────────────────────────────────────────────────────────
   const handleConfirm = async () => {
     if (!customer || !summary || saving) return
+
+    // Verification check for UPI
+    if (paymentMethod === 'upi' && !upiVerified) {
+      const confirmed = window.confirm(
+        `Please confirm: Have you verified receipt of ₹${summary.amountPaid.toFixed(2)} in your merchant UPI app or bank statement?`
+      )
+      if (!confirmed) return
+    }
+
     setSaving(true)
+    setPaymentStatus('payment_processing')
 
     try {
       const transactionKey = `tx_${Date.now()}_${crypto.randomUUID()}`
+      const paymentNote = `Payment: ${paymentMethod.toUpperCase()}${upiRef.trim() ? ` (UTR: ${upiRef.trim()})` : ''}`
+      const combinedNotes = [notes.trim(), paymentNote].filter(Boolean).join(' | ')
 
       const { data, error } = await supabase.rpc('process_billing', {
         p_customer_id: customer.id,
@@ -417,26 +469,34 @@ export default function BillingPage() {
         p_cashback_redeemed: summary.cashbackToRedeem,
         p_amount_paid: summary.amountPaid,
         p_cashback_earned: summary.cashbackEarned,
-        p_notes: notes.trim() || null,
+        p_notes: combinedNotes,
         p_idempotency_key: transactionKey,
       })
 
       if (error) throw new Error(error.message)
 
-      setLastSavedTxId(data as string)
+      const txId = data as string
+      setLastSavedTxId(txId)
+      setPaymentStatus('payment_successful')
 
-      // Broadcast payment success to customer display
-      if (displayActive) {
+      // Broadcast State 5: payment-success
+      broadcast({
+        mode: 'payment-success',
+        paymentStatus: 'payment_successful',
+        amountPayable: summary.amountPaid,
+        cashbackEarned: summary.cashbackEarned,
+        newWalletBalance: summary.newBalance,
+        transactionId: txId,
+      })
+
+      // Broadcast State 6: transaction-complete after 3 seconds
+      setTimeout(() => {
         broadcast({
-          mode: 'payment-success',
-          transactionId: data as string,
+          mode: 'transaction-complete',
+          newWalletBalance: summary.newBalance,
+          displayTimeoutSeconds: settings?.display_timeout_seconds || 5,
         })
-
-        // Auto-switch to thank you after 5 seconds
-        setTimeout(() => {
-          broadcast({ mode: 'thank-you' })
-        }, 5000)
-      }
+      }, 3000)
 
       await sendNotification({
         event: 'cashback_earned',
@@ -457,18 +517,12 @@ export default function BillingPage() {
 
       if (updatedCustomer) {
         setCustomer(updatedCustomer as Customer)
-
-        // Update customer display with real wallet balance
-        if (displayActive) {
-          broadcast({
-            newWalletBalance: (updatedCustomer as Customer).cashback_balance,
-          })
-        }
       }
 
       setStep('done')
-      toast.success('Bill saved successfully!')
+      toast.success('Bill saved & cashback credited successfully!')
     } catch (err) {
+      setPaymentStatus('payment_failed')
       toast.error(err instanceof Error ? err.message : 'Failed to save transaction')
     } finally {
       setSaving(false)
@@ -490,11 +544,14 @@ export default function BillingPage() {
     setShowSuggestions(false)
     setLastSavedTxId(null)
     setPaymentMethod('cash')
+    setCashReceived('')
+    setUpiVerified(false)
+    setUpiRef('')
+    setPaymentStatus('awaiting_payment')
+    setShowAdminQR(false)
 
-    // Reset customer display
-    if (displayActive) {
-      resetDisplay()
-    }
+    // Reset customer display back to Welcome state
+    resetDisplay()
   }
 
   const handleBillSameCustomerAgain = () => {
@@ -503,11 +560,30 @@ export default function BillingPage() {
     setUserEditedRedeem(false)
     setNotes('')
     setSummary(null)
+    setCashReceived('')
+    setUpiVerified(false)
+    setUpiRef('')
+    setPaymentStatus('awaiting_payment')
+    setShowAdminQR(false)
     setStep('billing')
+
+    if (customer) {
+      broadcast({
+        mode: 'customer-selected',
+        customerName: customer.name,
+        customerMobile: customer.mobile,
+        billAmount: 0,
+        cashbackRedeemed: 0,
+        amountPayable: 0,
+        cashbackEarned: 0,
+        availableBalance: customer.cashback_balance,
+        newWalletBalance: customer.cashback_balance,
+      })
+    }
   }
 
-  const stepLabels: Step[] = ['mobile', 'customer', 'billing', 'payment', 'confirm', 'done']
-  const stepDisplay = ['Search', 'Register', 'Billing', 'Payment', 'Review', 'Saved']
+  const stepLabels: Step[] = ['mobile', 'customer', 'billing', 'payment', 'done']
+  const stepDisplay = ['Search', 'Register', 'Billing', 'Payment', 'Saved']
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -520,27 +596,15 @@ export default function BillingPage() {
           <p className="section-subtitle">Point of Sale</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Customer Display Toggle */}
+          {/* OPEN CUSTOMER DISPLAY */}
           <button
-            onClick={() => {
-              setDisplayActive(!displayActive)
-              if (!displayActive) {
-                window.open('/customer-display', 'customer-display', 'popup,width=1024,height=768')
-                toast.success('Customer display opened! Drag to second monitor.')
-              } else {
-                resetDisplay()
-                toast('Customer display disconnected', { icon: '📺' })
-              }
-            }}
-            className={`text-xs flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold transition-all ${
-              displayActive
-                ? 'bg-brand-100 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800'
-                : 'btn-secondary'
-            }`}
-            title={displayActive ? 'Disconnect customer display' : 'Open customer-facing display'}
+            type="button"
+            onClick={handleOpenCustomerDisplay}
+            className="btn-primary text-xs flex items-center gap-1.5 px-3.5 py-2 font-bold uppercase tracking-wider shadow-sm"
+            title="Open Customer Display in separate window for second monitor"
           >
-            {displayActive ? <Monitor size={14} /> : <MonitorOff size={14} />}
-            {displayActive ? 'Display On' : 'Display'}
+            <Monitor size={15} />
+            <span>OPEN CUSTOMER DISPLAY</span>
           </button>
           <button onClick={resetBilling} className="btn-secondary text-xs flex items-center gap-1.5">
             <RefreshCw size={14} /> Reset Form
@@ -969,192 +1033,297 @@ export default function BillingPage() {
           </div>
         )}
 
-        {/* ── Step 4: Payment Method Selection ── */}
+        {/* ── Step 4: Payment Method Selection & Manual Verification ── */}
         {step === 'payment' && customer && summary && (
           <div className="space-y-5 animate-fade-in">
-            <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <CreditCard size={16} className="text-brand-600 dark:text-brand-400" /> Select Payment Method
-            </h2>
-
-            {/* Bill Summary */}
-            <div className="bg-slate-50 dark:bg-dark-950 p-4 rounded-xl text-sm flex items-center justify-between border border-slate-100 dark:border-dark-800">
+            {/* Header */}
+            <div className="flex items-center justify-between">
               <div>
-                <p className="font-semibold text-slate-900 dark:text-white">{customer.name}</p>
+                <h2 className="font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2">
+                  <CreditCard size={18} className="text-brand-600 dark:text-brand-400" />
+                  Payment Method & Verification
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Select payment mode and verify payment receipt before recording bill
+                </p>
+              </div>
+
+              <span className="text-xs font-bold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-950/70 border border-brand-200 dark:border-brand-800 px-3 py-1 rounded-full">
+                Payable: {formatCurrency(summary.amountPaid)}
+              </span>
+            </div>
+
+            {/* Customer & Bill Overview Card */}
+            <div className="bg-slate-50 dark:bg-dark-950/80 p-4 rounded-2xl border border-slate-200/80 dark:border-dark-800 text-sm flex items-center justify-between">
+              <div>
+                <p className="font-bold text-slate-900 dark:text-white">{customer.name}</p>
                 <p className="text-slate-500 dark:text-slate-400 font-mono text-xs">{customer.mobile}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-400">Amount Payable</p>
-                <p className="text-lg font-extrabold text-brand-700 dark:text-brand-400">
-                  {formatCurrency(summary.amountPaid)}
+                <span className="text-xs bg-slate-200/70 dark:bg-dark-800 text-slate-700 dark:text-slate-300 px-2.5 py-0.5 rounded-full font-medium">
+                  {serviceCategory}
+                </span>
+                <p className="text-xs text-brand-600 dark:text-brand-400 font-semibold mt-1">
+                  Cashback to Earn: +{formatCurrency(summary.cashbackEarned)}
                 </p>
               </div>
             </div>
 
-            {/* Payment Methods Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              {([
-                { method: 'cash' as PaymentMethod, icon: Banknote, label: 'Cash', desc: 'Pay with cash', color: 'text-emerald-600 dark:text-emerald-400' },
-                { method: 'upi' as PaymentMethod, icon: QrCode, label: 'UPI', desc: 'GPay, PhonePe, Paytm', color: 'text-violet-600 dark:text-violet-400' },
-                { method: 'card' as PaymentMethod, icon: CreditCard, label: 'Card', desc: 'Debit / Credit card', color: 'text-blue-600 dark:text-blue-400' },
-                { method: 'wallet-only' as PaymentMethod, icon: Wallet, label: 'Wallet Only', desc: 'Pay with cashback', color: 'text-orange-600 dark:text-orange-400' },
-              ]).map(({ method, icon: Icon, label, desc, color }) => {
-                const isSelected = paymentMethod === method
-                const isWalletDisabled = method === 'wallet-only' && summary.amountPaid > 0
-                return (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() => handleSelectPaymentMethod(method)}
-                    disabled={isWalletDisabled}
-                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
-                      isSelected
-                        ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/40 ring-2 ring-brand-200 dark:ring-brand-800'
-                        : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600'
-                    } ${isWalletDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <Icon size={22} className={color} />
-                    <p className={`font-semibold text-sm mt-2 ${isSelected ? 'text-brand-700 dark:text-brand-300' : 'text-slate-900 dark:text-white'}`}>
-                      {label}
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{desc}</p>
-                  </button>
-                )
-              })}
+            {/* Payment Method Selector (CASH vs UPI) */}
+            <div className="grid grid-cols-2 gap-3.5">
+              {/* CASH Option */}
+              <button
+                type="button"
+                onClick={() => handleSelectPaymentMethod('cash')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                  paymentMethod === 'cash'
+                    ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-4 ring-emerald-500/10 shadow-sm'
+                    : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600 bg-white dark:bg-dark-900'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    paymentMethod === 'cash'
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    <Banknote size={22} />
+                  </div>
+                  {paymentMethod === 'cash' && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  )}
+                </div>
+                <div className="mt-3">
+                  <p className="font-extrabold text-sm text-slate-900 dark:text-white">
+                    CASH PAYMENT
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Customer pays cash at the counter
+                  </p>
+                </div>
+              </button>
+
+              {/* UPI Option */}
+              <button
+                type="button"
+                onClick={() => handleSelectPaymentMethod('upi')}
+                className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                  paymentMethod === 'upi'
+                    ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/40 ring-4 ring-violet-500/10 shadow-sm'
+                    : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600 bg-white dark:bg-dark-900'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    paymentMethod === 'upi'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-violet-100 dark:bg-violet-950/80 text-violet-600 dark:text-violet-400'
+                  }`}>
+                    <QrCode size={22} />
+                  </div>
+                  {paymentMethod === 'upi' && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-violet-500 animate-ping" />
+                  )}
+                </div>
+                <div className="mt-3">
+                  <p className="font-extrabold text-sm text-slate-900 dark:text-white">
+                    UPI QR PAYMENT
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Dynamic QR on customer display screen
+                  </p>
+                </div>
+              </button>
             </div>
 
-            {/* UPI QR Preview (admin side) */}
-            {paymentMethod === 'upi' && summary.amountPaid > 0 && (
-              <div className="bg-slate-50 dark:bg-dark-950/70 border border-slate-200/80 dark:border-dark-800 rounded-2xl p-5 text-center space-y-3">
-                <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">UPI QR Code Preview</p>
-                <div className="inline-flex p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
-                  <QRCodeSVG
-                    value={buildUPILink({
-                      payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
-                      payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
-                      amount: summary.amountPaid,
-                      transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
-                    })}
-                    size={160}
-                    level="M"
-                    includeMargin={true}
-                  />
+            {/* CASH Flow */}
+            {paymentMethod === 'cash' && (
+              <div className="bg-slate-50 dark:bg-dark-950/70 border border-slate-200/80 dark:border-dark-800 rounded-2xl p-5 space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200/70 dark:border-dark-800">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total to Collect</p>
+                    <p className="text-3xl font-extrabold text-slate-900 dark:text-white mt-0.5">
+                      {formatCurrency(summary.amountPaid)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-400">Cashback to Issue</p>
+                    <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                      +{formatCurrency(summary.cashbackEarned)}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  UPI ID: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{SHOP_UPI_CONFIG.payeeVPA}</span>
-                </p>
-                {displayActive && (
-                  <p className="text-[11px] text-brand-600 dark:text-brand-400 font-medium">
-                    ✓ QR code is displayed on customer screen
-                  </p>
-                )}
+
+                {/* Cash Calculator */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="form-label text-xs">Cash Received from Customer (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={cashReceived}
+                      onChange={e => setCashReceived(e.target.value)}
+                      placeholder={summary.amountPaid.toString()}
+                      className="form-input text-base font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label text-xs">Change to Return to Customer</label>
+                    <div className="form-input bg-slate-100/70 dark:bg-dark-900 font-extrabold text-base flex items-center">
+                      {parseFloat(cashReceived) > summary.amountPaid
+                        ? formatCurrency(parseFloat(cashReceived) - summary.amountPaid)
+                        : '₹0.00'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 pt-1">
+                  {[summary.amountPaid, 100, 200, 500].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setCashReceived(amt.toString())}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white dark:bg-dark-900 border border-slate-200 dark:border-dark-700 hover:bg-slate-100 text-slate-700 dark:text-slate-300"
+                    >
+                      ₹{amt}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
+            {/* UPI Flow */}
+            {paymentMethod === 'upi' && (
+              <div className="bg-slate-50 dark:bg-dark-950/70 border border-slate-200/80 dark:border-dark-800 rounded-2xl p-5 space-y-4 animate-fade-in">
+                {/* Status Indicator */}
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-900/60">
+                  <div className="flex items-center gap-3">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-violet-600" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold text-violet-900 dark:text-violet-200">
+                        {paymentStatus === 'payment_failed'
+                          ? 'Payment Cancelled / Failed'
+                          : `Awaiting UPI Payment: ${formatCurrency(summary.amountPaid)}`}
+                      </p>
+                      <p className="text-[11px] text-violet-700 dark:text-violet-400">
+                        Dynamic QR code active on customer display screen
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="text-xs font-mono font-bold bg-white dark:bg-dark-900 px-2.5 py-1 rounded-lg border border-violet-200 dark:border-violet-800 text-violet-800 dark:text-violet-300">
+                    {settings?.merchant_upi_id || '7708481818@upi'}
+                  </span>
+                </div>
+
+                {/* Collapsible QR Preview (hidden on admin screen by default per spec) */}
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminQR(!showAdminQR)}
+                    className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-semibold"
+                  >
+                    {showAdminQR ? 'Hide QR Code on admin screen' : 'Preview QR Code on admin screen'}
+                  </button>
+
+                  {showAdminQR && (
+                    <div className="mt-3 p-4 bg-white dark:bg-dark-900 rounded-2xl border border-slate-200 dark:border-dark-700 inline-block shadow-md">
+                      <QRCodeSVG
+                        value={buildUPILink({
+                          payeeVPA: settings?.merchant_upi_id || '7708481818@upi',
+                          payeeName: settings?.merchant_display_name || settings?.shop_name || 'Smart Cashback',
+                          amount: summary.amountPaid,
+                          transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
+                        })}
+                        size={160}
+                        level="M"
+                        includeMargin={true}
+                      />
+                      <p className="text-[11px] text-slate-500 mt-2 font-mono">
+                        {settings?.merchant_upi_id || '7708481818@upi'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual Payment Verification Workflow (Section 5) */}
+                <div className="pt-2 border-t border-slate-200/80 dark:border-dark-800 space-y-3">
+                  <div>
+                    <label className="form-label text-xs">
+                      UPI UTR / Reference Number (Optional for audit)
+                    </label>
+                    <input
+                      type="text"
+                      value={upiRef}
+                      onChange={e => setUpiRef(e.target.value)}
+                      placeholder="e.g. 431289123456 from UPI SMS or Soundbox"
+                      className="form-input text-xs font-mono"
+                    />
+                  </div>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer bg-white dark:bg-dark-900 p-3 rounded-xl border border-slate-200 dark:border-dark-700">
+                    <input
+                      type="checkbox"
+                      checked={upiVerified}
+                      onChange={e => {
+                        setUpiVerified(e.target.checked)
+                        if (e.target.checked) setPaymentStatus('awaiting_payment')
+                      }}
+                      className="mt-0.5 rounded text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                      I have verified receipt of <strong>{formatCurrency(summary.amountPaid)}</strong> in my merchant UPI application or bank account
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setStep('billing')}
                 className="btn-secondary flex-1"
-              >
-                Back to Edit
-              </button>
-              <button
-                type="button"
-                onClick={handleProceedToConfirm}
-                className="btn-primary flex-1 flex items-center justify-center gap-2"
-              >
-                <CheckCircle size={16} /> Review & Confirm
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 5: Confirm ── */}
-        {step === 'confirm' && customer && summary && (
-          <div className="space-y-5 animate-fade-in">
-            <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <CheckCircle size={16} className="text-brand-600 dark:text-brand-400" /> Review Bill Details
-            </h2>
-
-            <div className="bg-slate-50 dark:bg-dark-950 p-4 rounded-xl text-sm flex items-center justify-between border border-slate-100 dark:border-dark-800">
-              <div>
-                <p className="font-semibold text-slate-900 dark:text-white">{customer.name}</p>
-                <p className="text-slate-500 dark:text-slate-400 font-mono text-xs">{customer.mobile}</p>
-              </div>
-              <span className="text-xs bg-brand-100 dark:bg-brand-950/80 text-brand-800 dark:text-brand-300 font-semibold px-2.5 py-1 rounded-full border border-brand-200 dark:border-brand-800">
-                {serviceCategory}
-              </span>
-            </div>
-
-            <div className="border border-slate-200 dark:border-dark-800 rounded-xl overflow-hidden shadow-sm">
-              {[
-                { label: 'Bill Amount', value: formatCurrency(summary.billAmount), className: 'text-slate-900 dark:text-white font-medium' },
-                {
-                  label: 'Cashback Redeemed',
-                  value: summary.cashbackToRedeem > 0 ? `− ${formatCurrency(summary.cashbackToRedeem)}` : '₹0.00',
-                  className: summary.cashbackToRedeem > 0 ? 'text-orange-600 dark:text-orange-400 font-bold' : 'text-slate-400',
-                },
-                {
-                  label: 'Amount Payable (Customer Pays)',
-                  value: formatCurrency(summary.amountPaid),
-                  className: 'font-extrabold text-slate-900 dark:text-white text-base',
-                  highlight: true,
-                },
-                {
-                  label: `New Cashback Earned (${cbPct}%)`,
-                  value: `+ ${formatCurrency(summary.cashbackEarned)}`,
-                  className: 'text-brand-600 dark:text-brand-400 font-bold',
-                },
-                {
-                  label: 'Updated Customer Wallet Balance',
-                  value: formatCurrency(summary.newBalance),
-                  className: 'text-brand-700 dark:text-brand-300 font-extrabold text-base',
-                  highlight: true,
-                },
-                {
-                  label: 'Payment Method',
-                  value: paymentMethod === 'upi' ? '💳 UPI' : paymentMethod === 'card' ? '💳 Card' : paymentMethod === 'wallet-only' ? '👛 Wallet Only' : '💵 Cash',
-                  className: 'text-slate-900 dark:text-white font-semibold',
-                },
-              ].map(({ label, value, className, highlight }, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center justify-between px-4 py-3 text-sm ${
-                    highlight
-                      ? 'bg-brand-50/60 dark:bg-brand-950/40 border-t border-brand-100 dark:border-brand-900'
-                      : i % 2 === 0
-                      ? 'bg-white dark:bg-dark-900'
-                      : 'bg-slate-50/60 dark:bg-dark-950/60'
-                  }`}
-                >
-                  <span className="text-slate-600 dark:text-slate-400 font-medium">{label}</span>
-                  <span className={className}>{value}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setStep('payment')}
-                className="btn-secondary flex-1"
                 disabled={saving}
               >
-                Back to Payment
+                Back to Edit Bill
               </button>
+
+              {paymentMethod === 'upi' && (
+                <button
+                  type="button"
+                  onClick={handlePaymentFailed}
+                  className="btn-danger flex-1"
+                  disabled={saving}
+                >
+                  ✕ Mark Payment Failed
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleConfirm}
                 className="btn-primary flex-1 py-3 text-base flex items-center justify-center gap-2"
                 disabled={saving}
               >
-                {saving ? 'Recording Transaction…' : '✓ Save Bill & Issue Cashback'}
+                <CheckCircle size={18} />
+                {saving
+                  ? 'Recording Transaction…'
+                  : paymentMethod === 'upi'
+                  ? '✓ Verify & Confirm Payment'
+                  : '✓ Confirm Cash & Save Bill'}
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Step 6: Completed ── */}
+        {/* ── Step 5: Completed ── */}
         {step === 'done' && summary && customer && (
           <div className="text-center space-y-5 py-4 animate-fade-in">
             <div className="w-20 h-20 rounded-full bg-brand-100 dark:bg-brand-950/80 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto shadow-sm">

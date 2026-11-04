@@ -60,3 +60,4 @@ assert.strictEqual(resRedeem.newBalance, 2.00) // 50 - 50 + 2
 console.log('✅ Cashback calculated on net amount after redemption')
 
 console.log('🎉 ALL DUAL DISPLAY & UPI LOGIC TESTS PASSED!')
+

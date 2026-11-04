@@ -1,356 +1,533 @@
 /**
- * CustomerDisplayPage – Full-screen customer-facing display.
+ * CustomerDisplayPage – Full-screen customer-facing dual monitor display.
  *
- * Opens on a second monitor at /customer-display.
+ * Route: /customer-display
  * No authentication required.
- * Receives real-time updates via BroadcastChannel from admin BillingPage.
+ * Real-time synchronization via BroadcastChannel with localStorage storage-event fallback.
+ * Implements the 6 distinct display states required by Smart Cashback specification.
  */
-import { useEffect, useState } from 'react'
-import { Zap, Wifi, WifiOff, ShoppingBag, CreditCard, QrCode, CheckCircle, Heart, Clock } from 'lucide-react'
+import { useEffect, useState, useMemo } from 'react'
+import {
+  Zap, Wifi, WifiOff, ShoppingBag, CreditCard, QrCode,
+  CheckCircle, Heart, Clock, Maximize2, Minimize2,
+  Banknote, ArrowRight, ShieldCheck, Sparkles, RefreshCw
+} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useDisplayStore, type DisplaySession } from '@/store/displayStore'
 import { formatCurrency } from '@/lib/cashback'
 
 export default function CustomerDisplayPage() {
-  const { session, startListening } = useDisplayStore()
+  const { session, startListening, resetDisplay } = useDisplayStore()
   const [connected, setConnected] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Start listening for admin broadcasts
+  // Start cross-window listener (BroadcastChannel + storage event fallback)
   useEffect(() => {
     const cleanup = startListening()
     setConnected(true)
     return cleanup
   }, [startListening])
 
-  // Update clock every second
+  // Live digital clock
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  const shopName = session.shopName || 'Smart Cashback Shop'
+  // Fullscreen toggle handler
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {})
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {})
+    }
+  }
+
+  // Auto-reset timer when in State 6 (Transaction Complete)
+  useEffect(() => {
+    if (session.mode === 'transaction-complete' || session.mode === 'thank-you') {
+      const timeoutMs = (session.displayTimeoutSeconds || 5) * 1000
+      const timer = setTimeout(() => {
+        resetDisplay()
+      }, timeoutMs)
+      return () => clearTimeout(timer)
+    }
+  }, [session.mode, session.displayTimeoutSeconds, resetDisplay])
+
+  const shopName = session.shopName || 'Smart Cashback'
+
+  // Map modes to active state
+  const isWelcome = session.mode === 'welcome' || (!session.customerName && session.mode !== 'payment-success' && session.mode !== 'transaction-complete')
+  const isCustomerSelected = session.mode === 'customer-selected' || session.mode === 'billing'
+  const isPaymentSelection = session.mode === 'payment-selection' || session.mode === 'payment-pending'
+  const isWaitingPayment = session.mode === 'waiting-payment' || session.paymentStatus === 'awaiting_payment'
+  const isPaymentSuccess = session.mode === 'payment-success' || session.paymentStatus === 'payment_successful'
+  const isTransactionComplete = session.mode === 'transaction-complete' || session.mode === 'thank-you'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col overflow-hidden select-none">
-      {/* ── Top Bar ── */}
-      <header className="flex items-center justify-between px-8 py-4 bg-black/30 backdrop-blur-sm border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Zap size={20} className="text-white" />
+    <div className="relative min-h-screen bg-slate-950 text-white flex flex-col justify-between overflow-hidden select-none font-sans">
+      {/* ── Ambient Background Glows ── */}
+      <div className="pointer-events-none absolute -top-40 -left-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl animate-pulse" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl animate-pulse" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-emerald-950/20 rounded-full blur-3xl" />
+
+      {/* ── Top Header ── */}
+      <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-4 bg-slate-900/60 backdrop-blur-md border-b border-white/5">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/25 ring-1 ring-white/20">
+            <Zap size={22} className="text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight">{shopName}</h1>
-            <p className="text-xs text-emerald-400 font-medium">Smart Cashback System</p>
+            <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+              {shopName}
+              <span className="text-[11px] font-semibold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                Live POS
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 font-medium">Customer Rewards Display</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-5">
+          {/* Connection status */}
+          <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
             {connected ? (
-              <Wifi size={16} className="text-emerald-400" />
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-emerald-300 font-medium">Synced</span>
+              </>
             ) : (
-              <WifiOff size={16} className="text-red-400" />
+              <>
+                <WifiOff size={14} className="text-rose-400" />
+                <span className="text-rose-300 font-medium">Connecting…</span>
+              </>
             )}
-            <span className="text-xs text-slate-400">
-              {connected ? 'Connected' : 'Waiting for connection…'}
-            </span>
           </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold text-white font-mono">
+
+          {/* Clock */}
+          <div className="text-right hidden sm:block">
+            <p className="text-sm font-bold font-mono tracking-wide text-white">
               {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
             </p>
-            <p className="text-[10px] text-slate-400">
-              {currentTime.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            <p className="text-[10px] text-slate-400 font-medium">
+              {currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
             </p>
           </div>
+
+          {/* Fullscreen button */}
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-colors"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          >
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
         </div>
       </header>
 
-      {/* ── Main Content ── */}
-      <main className="flex-1 flex items-center justify-center p-8">
-        {session.mode === 'welcome' && <WelcomeScreen shopName={shopName} />}
-        {session.mode === 'billing' && <BillingScreen session={session} />}
-        {session.mode === 'payment-pending' && <PaymentPendingScreen session={session} />}
-        {session.mode === 'payment-success' && <PaymentSuccessScreen session={session} />}
-        {session.mode === 'thank-you' && <ThankYouScreen session={session} />}
+      {/* ── Main Dynamic Stage ── */}
+      <main className="relative z-10 flex-1 flex items-center justify-center p-6 sm:p-10">
+        {/* State 1: Welcome Screen */}
+        {isWelcome && <State1WelcomeScreen shopName={shopName} />}
+
+        {/* State 2: Customer Selected & Live Billing */}
+        {isCustomerSelected && <State2CustomerSelected session={session} />}
+
+        {/* State 3 & 4: Payment Selection & Waiting for Payment */}
+        {(isPaymentSelection || (isWaitingPayment && !isPaymentSuccess && !isTransactionComplete)) && (
+          <State3And4PaymentSelection session={session} />
+        )}
+
+        {/* State 5: Payment Successful */}
+        {isPaymentSuccess && !isTransactionComplete && <State5PaymentSuccessful session={session} />}
+
+        {/* State 6: Transaction Complete & Thank You */}
+        {isTransactionComplete && <State6TransactionComplete session={session} />}
       </main>
 
-      {/* ── Bottom Bar ── */}
-      <footer className="px-8 py-3 bg-black/30 border-t border-white/5 flex items-center justify-between">
-        <p className="text-xs text-slate-500">
-          Earn {session.cashbackPercentage || 2}% cashback on every purchase of ₹99 or more
-        </p>
-        <p className="text-xs text-slate-600">
-          Powered by Smart Cashback
-        </p>
+      {/* ── Bottom Footer ── */}
+      <footer className="relative z-10 px-8 py-3.5 bg-slate-900/60 backdrop-blur-md border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} className="text-emerald-400" />
+          <span>
+            Loyalty Rewards: Earn <strong>{session.cashbackPercentage || 2}% cashback</strong> on every purchase of ₹99 or more
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-slate-500 font-medium">
+          <span>UPI · Cash · Loyalty Wallet</span>
+          <span>•</span>
+          <span>Smart Cashback v2.0</span>
+        </div>
       </footer>
     </div>
   )
 }
 
-// ─── Welcome Screen (Idle) ─────────────────────────────────────────────────
-function WelcomeScreen({ shopName }: { shopName: string }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE 1: WELCOME SCREEN (When no customer is selected)
+// ─────────────────────────────────────────────────────────────────────────────
+function State1WelcomeScreen({ shopName }: { shopName: string }) {
   return (
     <div className="text-center space-y-8 animate-fade-in max-w-2xl">
-      <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/30">
-        <Zap size={56} className="text-white" />
+      <div className="relative inline-block">
+        <div className="w-28 h-28 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/40 ring-4 ring-emerald-500/20 animate-bounce duration-1000">
+          <Zap size={56} className="text-white" />
+        </div>
+        <span className="absolute -bottom-2 -right-2 bg-emerald-500 text-white text-[11px] font-extrabold px-3 py-1 rounded-full shadow-lg border border-slate-900">
+          2% CASHBACK
+        </span>
       </div>
-      <div>
-        <h2 className="text-5xl font-extrabold tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-          Welcome to
+
+      <div className="space-y-3">
+        <p className="text-xs uppercase tracking-widest text-emerald-400 font-bold">
+          {shopName}
+        </p>
+        <h2 className="text-5xl sm:text-6xl font-black tracking-tight text-white">
+          Welcome!
         </h2>
-        <h3 className="text-4xl font-bold text-emerald-400 mt-2">{shopName}</h3>
+        <p className="text-xl sm:text-2xl text-slate-300 font-medium">
+          Please wait while we prepare your bill.
+        </p>
       </div>
-      <p className="text-xl text-slate-400 font-medium">
-        Earn cashback rewards on every purchase!
-      </p>
-      <div className="flex items-center justify-center gap-8 pt-4">
-        <FeatureCard icon={ShoppingBag} label="Xerox & Print" />
-        <FeatureCard icon={CreditCard} label="Mobile Recharge" />
-        <FeatureCard icon={QrCode} label="UPI Payments" />
+
+      {/* Services Grid */}
+      <div className="grid grid-cols-3 gap-4 pt-4 max-w-lg mx-auto">
+        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm flex flex-col items-center gap-2">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <ShoppingBag size={20} />
+          </div>
+          <p className="text-xs font-semibold text-slate-200">Xerox & Print</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm flex flex-col items-center gap-2">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+            <CreditCard size={20} />
+          </div>
+          <p className="text-xs font-semibold text-slate-200">Mobile Recharge</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm flex flex-col items-center gap-2">
+          <div className="w-10 h-10 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center">
+            <QrCode size={20} />
+          </div>
+          <p className="text-xs font-semibold text-slate-200">UPI Instant Pay</p>
+        </div>
       </div>
     </div>
   )
 }
 
-function FeatureCard({ icon: Icon, label }: { icon: typeof ShoppingBag; label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm min-w-[140px]">
-      <Icon size={28} className="text-emerald-400" />
-      <span className="text-sm font-medium text-slate-300">{label}</span>
-    </div>
-  )
-}
-
-// ─── Billing Screen ─────────────────────────────────────────────────────────
-function BillingScreen({ session }: { session: DisplaySession }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE 2: CUSTOMER SELECTED & LIVE BILLING DETAILS
+// ─────────────────────────────────────────────────────────────────────────────
+function State2CustomerSelected({ session }: { session: DisplaySession }) {
   return (
     <div className="w-full max-w-xl animate-fade-in space-y-6">
-      {/* Customer greeting */}
-      <div className="text-center space-y-2">
-        <p className="text-lg text-slate-400">Hello,</p>
-        <h2 className="text-4xl font-extrabold text-white">{session.customerName}</h2>
-        <p className="text-sm text-slate-500 font-mono">{session.customerMobile}</p>
+      {/* Customer Header */}
+      <div className="text-center space-y-1.5">
+        <p className="text-sm font-semibold uppercase tracking-wider text-emerald-400">
+          Billing In Progress
+        </p>
+        <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tight">
+          {session.customerName || 'Customer'}
+        </h2>
+        <p className="text-base text-slate-400 font-mono font-medium">
+          Mobile: {session.customerMobile}
+        </p>
       </div>
 
-      {/* Bill details card */}
-      <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-sm space-y-5">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-300">Your Bill</h3>
-          {session.serviceCategory && (
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full font-medium border border-emerald-500/30">
-              {session.serviceCategory}
-            </span>
-          )}
+      {/* Bill Card */}
+      <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl space-y-4">
+        {/* Service */}
+        <div className="flex items-center justify-between pb-3 border-b border-white/10 text-sm">
+          <span className="text-slate-400">Service:</span>
+          <span className="font-semibold text-white bg-white/10 px-3 py-1 rounded-full text-xs">
+            {session.serviceCategory || 'Standard Services'}
+          </span>
         </div>
 
-        <div className="space-y-3 text-base">
-          <BillRow label="Bill Amount" value={formatCurrency(session.billAmount)} />
+        {/* Bill Rows */}
+        <div className="space-y-3 text-sm">
+          <div className="flex justify-between items-center text-slate-300">
+            <span>Bill Amount:</span>
+            <span className="font-bold text-white text-base">
+              {formatCurrency(session.billAmount)}
+            </span>
+          </div>
+
           {session.cashbackRedeemed > 0 && (
-            <BillRow
-              label="Cashback Applied"
-              value={`− ${formatCurrency(session.cashbackRedeemed)}`}
-              className="text-orange-400"
-            />
+            <div className="flex justify-between items-center text-orange-400">
+              <span>Cashback Redeemed:</span>
+              <span className="font-bold text-base">
+                − {formatCurrency(session.cashbackRedeemed)}
+              </span>
+            </div>
           )}
-          <div className="border-t border-white/10 pt-3">
-            <BillRow
-              label="Amount to Pay"
-              value={formatCurrency(session.amountPayable)}
-              className="text-2xl font-extrabold text-emerald-400"
-              labelClassName="text-lg font-semibold"
-            />
+
+          <div className="flex justify-between items-center pt-3 border-t border-white/10">
+            <span className="text-base font-bold text-white">Final Payable Amount:</span>
+            <span className="text-3xl font-black text-emerald-400">
+              {formatCurrency(session.amountPayable)}
+            </span>
           </div>
         </div>
 
-        {session.cashbackEarned > 0 && (
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
-            <p className="text-sm text-emerald-300">You'll earn</p>
-            <p className="text-2xl font-bold text-emerald-400">
-              +{formatCurrency(session.cashbackEarned)} cashback
+        {/* Cashback highlight banner */}
+        <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 to-teal-500/15 border border-emerald-500/30 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-emerald-300 font-medium">New Cashback on this bill:</p>
+            <p className="text-xl font-black text-emerald-400">
+              +{formatCurrency(session.cashbackEarned)}
             </p>
           </div>
-        )}
+          <div className="text-right">
+            <p className="text-xs text-slate-400 font-medium">Available Wallet Balance:</p>
+            <p className="text-lg font-bold text-slate-200">
+              {formatCurrency(session.availableBalance || session.newWalletBalance)}
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-slate-500">
-        <Clock size={14} />
-        <span className="text-sm">Preparing your payment…</span>
+      <div className="flex items-center justify-center gap-2 text-slate-400 text-xs animate-pulse">
+        <Clock size={14} className="text-emerald-400" />
+        <span>Please verify your bill details above before making payment</span>
       </div>
     </div>
   )
 }
 
-// ─── Payment Pending Screen (QR Code) ───────────────────────────────────────
-function PaymentPendingScreen({ session }: { session: DisplaySession }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE 3 & 4: PAYMENT SELECTION & WAITING FOR PAYMENT (CASH / UPI QR)
+// ─────────────────────────────────────────────────────────────────────────────
+function State3And4PaymentSelection({ session }: { session: DisplaySession }) {
+  const isUPI = session.paymentMethod === 'upi'
+
   return (
-    <div className="w-full max-w-2xl animate-fade-in space-y-6">
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-extrabold text-white">
-          {session.paymentMethod === 'upi' ? 'Scan to Pay' : 'Payment'}
+    <div className="w-full max-w-3xl animate-fade-in space-y-6">
+      {/* Title */}
+      <div className="text-center space-y-1">
+        <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+          Payment Method: {isUPI ? 'UPI QR Pay' : 'Cash Payment'}
+        </p>
+        <h2 className="text-3xl sm:text-4xl font-black text-white">
+          {session.customerName}
         </h2>
-        <p className="text-slate-400 text-lg">{session.customerName}</p>
+        <p className="text-sm text-slate-400 font-mono">{session.customerMobile}</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-center justify-center">
-        {/* QR Code */}
-        {session.paymentMethod === 'upi' && session.upiLink && (
-          <div className="bg-white rounded-3xl p-6 shadow-2xl flex flex-col items-center">
-            <div className="p-2 bg-white rounded-2xl">
-              <QRCodeSVG
-                value={session.upiLink}
-                size={240}
-                level="M"
-                includeMargin={true}
-              />
+      {isUPI ? (
+        /* UPI QR Interface */
+        <div className="flex flex-col md:flex-row gap-6 items-center justify-center">
+          {/* Dynamic QR Code Card */}
+          <div className="bg-white rounded-3xl p-6 shadow-2xl flex flex-col items-center ring-4 ring-emerald-500/30">
+            <div className="p-3 bg-white rounded-2xl border-2 border-slate-100">
+              {session.upiLink ? (
+                <QRCodeSVG
+                  value={session.upiLink}
+                  size={240}
+                  level="M"
+                  includeMargin={false}
+                />
+              ) : (
+                <div className="w-60 h-60 flex items-center justify-center bg-slate-100 text-slate-400 text-sm">
+                  Generating QR…
+                </div>
+              )}
             </div>
-            <p className="text-center text-slate-800 text-sm font-semibold mt-3">
-              Scan with any UPI App (GPay, PhonePe, Paytm)
-            </p>
-          </div>
-        )}
 
-        {/* Payment Summary */}
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-sm space-y-5 min-w-[320px]">
-          <div className="text-center space-y-1">
-            <p className="text-sm text-slate-400 uppercase tracking-wider">Amount to Pay</p>
-            <p className="text-5xl font-extrabold text-emerald-400">
+            <div className="mt-4 text-center space-y-1">
+              <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Scan with any UPI App
+              </p>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Google Pay · PhonePe · Paytm · BHIM
+              </p>
+            </div>
+          </div>
+
+          {/* Amount & Status Card */}
+          <div className="flex-1 bg-slate-900/80 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-md space-y-5 max-w-md w-full">
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Exact Amount to Pay
+              </p>
+              <p className="text-5xl font-black text-emerald-400 mt-1">
+                {formatCurrency(session.amountPayable)}
+              </p>
+            </div>
+
+            <div className="space-y-2 py-3 border-y border-white/10 text-xs">
+              <div className="flex justify-between text-slate-300">
+                <span>Merchant UPI ID:</span>
+                <span className="font-mono font-bold text-white">{session.merchantUpiId || '7708481818@upi'}</span>
+              </div>
+              <div className="flex justify-between text-slate-300">
+                <span>Merchant Name:</span>
+                <span className="font-semibold text-white">{session.merchantDisplayName || session.shopName}</span>
+              </div>
+            </div>
+
+            {/* Pulsing Awaiting Payment Indicator */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+              </span>
+              <p className="text-xs font-bold text-amber-300">
+                Waiting for your UPI payment…
+              </p>
+            </div>
+
+            {session.cashbackEarned > 0 && (
+              <p className="text-xs text-emerald-400 font-semibold text-center">
+                ✨ You'll earn +{formatCurrency(session.cashbackEarned)} cashback on this bill!
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Cash Payment Interface */
+        <div className="max-w-md mx-auto bg-slate-900/80 border border-white/10 rounded-3xl p-8 backdrop-blur-md shadow-2xl text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+            <Banknote size={36} />
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Payable in Cash at Counter
+            </p>
+            <p className="text-5xl font-black text-emerald-400 mt-1">
               {formatCurrency(session.amountPayable)}
             </p>
           </div>
 
-          {session.paymentMethod === 'upi' && (
-            <div className="space-y-2 text-center">
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Pay to UPI ID</p>
-              <p className="text-lg font-mono font-semibold text-white bg-white/10 px-4 py-2 rounded-xl">
-                {session.upiLink ? new URL(session.upiLink).searchParams.get('pa') : ''}
-              </p>
+          <div className="bg-white/5 rounded-2xl p-4 space-y-2 text-xs text-left">
+            <div className="flex justify-between text-slate-300">
+              <span>Bill Amount:</span>
+              <span className="font-semibold text-white">{formatCurrency(session.billAmount)}</span>
             </div>
-          )}
-
-          {session.paymentMethod === 'cash' && (
-            <div className="text-center space-y-2">
-              <CreditCard size={48} className="text-emerald-400 mx-auto" />
-              <p className="text-lg text-slate-300">Please pay cash at the counter</p>
+            {session.cashbackRedeemed > 0 && (
+              <div className="flex justify-between text-orange-400">
+                <span>Cashback Redeemed:</span>
+                <span className="font-semibold">− {formatCurrency(session.cashbackRedeemed)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-emerald-400 font-bold pt-2 border-t border-white/10">
+              <span>Cashback to Earn:</span>
+              <span>+{formatCurrency(session.cashbackEarned)}</span>
             </div>
-          )}
+          </div>
 
-          {session.paymentMethod === 'card' && (
-            <div className="text-center space-y-2">
-              <CreditCard size={48} className="text-blue-400 mx-auto" />
-              <p className="text-lg text-slate-300">Please tap/insert your card</p>
-            </div>
-          )}
-
-          {session.cashbackEarned > 0 && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
-              <p className="text-sm text-emerald-300">
-                You'll earn <span className="font-bold">+{formatCurrency(session.cashbackEarned)}</span> cashback
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {session.paymentMethod === 'upi' && (
-        <div className="flex items-center justify-center gap-2 animate-pulse">
-          <div className="w-2 h-2 rounded-full bg-amber-400" />
-          <span className="text-amber-400 text-sm font-medium">Waiting for payment…</span>
+          <p className="text-xs text-slate-400">
+            Please hand over cash to the shopkeeper.
+          </p>
         </div>
       )}
     </div>
   )
 }
 
-// ─── Payment Success Screen ────────────────────────────────────────────────
-function PaymentSuccessScreen({ session }: { session: DisplaySession }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE 5: PAYMENT SUCCESSFUL
+// ─────────────────────────────────────────────────────────────────────────────
+function State5PaymentSuccessful({ session }: { session: DisplaySession }) {
   return (
-    <div className="text-center space-y-8 animate-fade-in max-w-lg">
-      <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto ring-4 ring-emerald-500/30">
-        <CheckCircle size={56} className="text-emerald-400" />
+    <div className="text-center space-y-6 animate-fade-in max-w-lg w-full">
+      <div className="w-24 h-24 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto ring-8 ring-emerald-500/30 text-emerald-400 animate-bounce duration-1000">
+        <CheckCircle size={56} />
+      </div>
+
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-widest text-emerald-400 font-bold">
+          Transaction Confirmed
+        </p>
+        <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tight">
+          PAYMENT SUCCESSFUL
+        </h2>
+        <p className="text-base text-slate-300">
+          Thank you, <strong>{session.customerName}</strong>!
+        </p>
+      </div>
+
+      <div className="bg-slate-900/90 border border-emerald-500/30 rounded-3xl p-6 backdrop-blur-md shadow-2xl space-y-3.5 text-left text-sm">
+        <div className="flex justify-between text-slate-300">
+          <span>Amount Paid:</span>
+          <span className="text-xl font-black text-white">{formatCurrency(session.amountPayable)}</span>
+        </div>
+        <div className="flex justify-between text-slate-300">
+          <span>Payment Method:</span>
+          <span className="font-semibold text-white uppercase text-xs bg-white/10 px-2.5 py-0.5 rounded-full">
+            {session.paymentMethod === 'upi' ? 'UPI' : 'CASH'}
+          </span>
+        </div>
+
+        <div className="pt-3 border-t border-white/10 space-y-2">
+          <div className="flex justify-between text-emerald-400 font-bold">
+            <span>Cashback Earned:</span>
+            <span className="text-lg">+{formatCurrency(session.cashbackEarned)}</span>
+          </div>
+
+          <div className="flex justify-between text-slate-200">
+            <span>Updated Wallet Balance:</span>
+            <span className="text-2xl font-black text-emerald-400">
+              {formatCurrency(session.newWalletBalance)}
+            </span>
+          </div>
+        </div>
+
+        {session.transactionId && (
+          <p className="text-[11px] font-mono text-slate-500 pt-2 border-t border-white/5 truncate">
+            Tx Ref: {session.transactionId}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE 6: TRANSACTION COMPLETE & THANK YOU
+// ─────────────────────────────────────────────────────────────────────────────
+function State6TransactionComplete({ session }: { session: DisplaySession }) {
+  return (
+    <div className="text-center space-y-6 animate-fade-in max-w-lg w-full">
+      <div className="w-24 h-24 rounded-full bg-rose-500/15 flex items-center justify-center mx-auto text-rose-400 ring-4 ring-rose-500/20">
+        <Heart size={48} className="fill-rose-400" />
       </div>
 
       <div className="space-y-2">
-        <h2 className="text-4xl font-extrabold text-white">Payment Received!</h2>
-        <p className="text-xl text-slate-400">Thank you, {session.customerName}</p>
-      </div>
-
-      <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-sm space-y-4 text-left">
-        <BillRow label="Bill Amount" value={formatCurrency(session.billAmount)} />
-        {session.cashbackRedeemed > 0 && (
-          <BillRow label="Cashback Used" value={`− ${formatCurrency(session.cashbackRedeemed)}`} className="text-orange-400" />
-        )}
-        <BillRow label="Amount Paid" value={formatCurrency(session.amountPayable)} className="font-bold text-white text-lg" />
-        <div className="border-t border-white/10 pt-4 space-y-3">
-          {session.cashbackEarned > 0 && (
-            <BillRow
-              label="Cashback Earned"
-              value={`+${formatCurrency(session.cashbackEarned)}`}
-              className="text-emerald-400 font-bold text-lg"
-            />
-          )}
-          <BillRow
-            label="Wallet Balance"
-            value={formatCurrency(session.newWalletBalance)}
-            className="text-emerald-300 font-extrabold text-xl"
-            labelClassName="font-semibold"
-          />
-        </div>
-      </div>
-
-      {session.transactionId && (
-        <p className="text-xs text-slate-600 font-mono">Ref: {session.transactionId}</p>
-      )}
-    </div>
-  )
-}
-
-// ─── Thank You Screen ──────────────────────────────────────────────────────
-function ThankYouScreen({ session }: { session: DisplaySession }) {
-  return (
-    <div className="text-center space-y-8 animate-fade-in max-w-lg">
-      <div className="w-24 h-24 rounded-full bg-rose-500/10 flex items-center justify-center mx-auto">
-        <Heart size={48} className="text-rose-400" />
-      </div>
-      <div className="space-y-3">
-        <h2 className="text-5xl font-extrabold bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">
+        <h2 className="text-4xl sm:text-5xl font-black bg-gradient-to-r from-emerald-300 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
           Thank You!
         </h2>
-        <p className="text-xl text-slate-400">
-          See you again, {session.customerName}!
+        <p className="text-lg text-slate-300 font-medium">
+          Thank you for visiting {session.shopName || 'Smart Cashback'}!
+        </p>
+        <p className="text-sm text-emerald-400 font-semibold">
+          Your cashback has been added successfully.
         </p>
       </div>
+
       {session.newWalletBalance > 0 && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6">
-          <p className="text-sm text-emerald-300 mb-1">Your cashback balance</p>
-          <p className="text-4xl font-extrabold text-emerald-400">
+        <div className="p-6 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-1 shadow-xl">
+          <p className="text-xs uppercase tracking-wider text-emerald-300 font-bold">
+            Available Cashback Balance
+          </p>
+          <p className="text-5xl font-black text-emerald-400">
             {formatCurrency(session.newWalletBalance)}
           </p>
-          <p className="text-xs text-emerald-300/60 mt-2">Redeem on your next visit!</p>
+          <p className="text-xs text-slate-400 pt-2">
+            Redeem on your next purchase of ₹99 or more!
+          </p>
         </div>
       )}
+
+      {/* Auto-reset notice */}
+      <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
+        <RefreshCw size={12} className="animate-spin" />
+        <span>Ready for next customer in {session.displayTimeoutSeconds || 5} seconds…</span>
+      </div>
     </div>
   )
 }
-
-// ─── Shared Components ─────────────────────────────────────────────────────
-function BillRow({
-  label,
-  value,
-  className = '',
-  labelClassName = '',
-}: {
-  label: string
-  value: string
-  className?: string
-  labelClassName?: string
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className={`text-slate-400 ${labelClassName}`}>{label}</span>
-      <span className={`font-semibold ${className || 'text-white'}`}>{value}</span>
-    </div>
-  )
-}
-

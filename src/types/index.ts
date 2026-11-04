@@ -69,6 +69,11 @@ export interface ShopSettings {
   currency: string
   date_format: string
   time_format: string
+  merchant_upi_id?: string
+  merchant_display_name?: string
+  qr_payment_method?: 'standard_upi' | 'payment_gateway'
+  payment_expiry_seconds?: number
+  display_timeout_seconds?: number
   updated_at: string
 }
 

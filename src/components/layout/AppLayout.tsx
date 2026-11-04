@@ -190,12 +190,19 @@ export default function AppLayout() {
           <div className="flex items-center gap-2.5 ml-auto">
             <button
               type="button"
-              onClick={() => window.open('/customer-display', 'customer-display', 'popup,width=1200,height=800')}
-              className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5"
+              onClick={() => {
+                window.open(
+                  '/customer-display',
+                  'smart-cashback-customer-display',
+                  'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
+                )
+                toast.success('Customer display opened! Move to your external monitor.')
+              }}
+              className="btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5 font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-800 bg-brand-50/60 dark:bg-brand-950/50"
               title="Open Customer Display on second monitor"
             >
-              <Monitor size={14} className="text-brand-600 dark:text-brand-400" />
-              <span className="hidden md:inline">Customer Display</span>
+              <Monitor size={15} className="text-brand-600 dark:text-brand-400" />
+              <span>OPEN CUSTOMER DISPLAY</span>
             </button>
 
             <NavLink

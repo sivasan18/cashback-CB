@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Settings, Save, Plus, Trash2, GripVertical, KeyRound,
-  AlertOctagon, AlertTriangle, ShieldCheck, Lock, CheckCircle2, X
+  AlertOctagon, AlertTriangle, ShieldCheck, Lock, CheckCircle2, X,
+  QrCode, Monitor
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -17,6 +18,11 @@ export default function SettingsPage() {
     shop_name: '', shop_address: '', contact_number: '',
     cashback_percentage: 2, minimum_eligible_purchase: 99,
     currency: 'INR', date_format: 'DD/MM/YYYY', time_format: '12h',
+    merchant_upi_id: '7708481818@upi',
+    merchant_display_name: 'Smart Cashback',
+    qr_payment_method: 'standard_upi' as 'standard_upi' | 'payment_gateway',
+    payment_expiry_seconds: 300,
+    display_timeout_seconds: 5,
   })
   const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [newCat, setNewCat] = useState('')
@@ -47,6 +53,11 @@ export default function SettingsPage() {
         currency: settings.currency,
         date_format: settings.date_format,
         time_format: settings.time_format,
+        merchant_upi_id: settings.merchant_upi_id || '7708481818@upi',
+        merchant_display_name: settings.merchant_display_name || settings.shop_name || 'Smart Cashback',
+        qr_payment_method: settings.qr_payment_method || 'standard_upi',
+        payment_expiry_seconds: settings.payment_expiry_seconds || 300,
+        display_timeout_seconds: settings.display_timeout_seconds || 5,
       })
     }
   }, [settings])
@@ -337,6 +348,86 @@ export default function SettingsPage() {
                 className="form-input"
               />
               <p className="text-xs text-slate-400 mt-1">Bills below ₹{form.minimum_eligible_purchase} earn no cashback</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── UPI Payment Settings & Dual Display ── */}
+        <div className="border-t border-slate-100 dark:border-dark-800 pt-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <QrCode size={18} className="text-brand-600 dark:text-brand-400" />
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+              UPI Payment & Customer Display Settings
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">
+                Merchant UPI ID <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.merchant_upi_id}
+                onChange={e => setForm(f => ({ ...f, merchant_upi_id: e.target.value.trim() }))}
+                placeholder="e.g. 7708481818@upi"
+                className="form-input font-mono"
+              />
+              <p className="text-xs text-slate-400 mt-1">Configured payee UPI VPA for customer QR payments</p>
+            </div>
+
+            <div>
+              <label className="form-label">Merchant Display Name</label>
+              <input
+                type="text"
+                value={form.merchant_display_name}
+                onChange={e => setForm(f => ({ ...f, merchant_display_name: e.target.value }))}
+                placeholder="e.g. Smart Cashback Shop"
+                className="form-input"
+              />
+              <p className="text-xs text-slate-400 mt-1">Displayed in customer UPI apps and QR request</p>
+            </div>
+
+            <div>
+              <label className="form-label">QR Payment Method</label>
+              <select
+                value={form.qr_payment_method}
+                onChange={e => setForm(f => ({ ...f, qr_payment_method: e.target.value as any }))}
+                className="form-input"
+              >
+                <option value="standard_upi">Standard NPCI UPI QR (Direct to Bank)</option>
+                <option value="payment_gateway">Payment Gateway (Webhook verified)</option>
+              </select>
+              <p className="text-xs text-slate-400 mt-1">NPCI standard dynamic deep link URI</p>
+            </div>
+
+            <div>
+              <label className="form-label">Payment Expiry Duration (seconds)</label>
+              <input
+                type="number"
+                min="60"
+                step="30"
+                value={form.payment_expiry_seconds}
+                onChange={e => setForm(f => ({ ...f, payment_expiry_seconds: parseInt(e.target.value) || 300 }))}
+                className="form-input"
+              />
+              <p className="text-xs text-slate-400 mt-1">Validity window for dynamic QR codes (default: 300s)</p>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="form-label">Customer Display Auto-Reset Delay (seconds)</label>
+              <input
+                type="number"
+                min="2"
+                max="30"
+                step="1"
+                value={form.display_timeout_seconds}
+                onChange={e => setForm(f => ({ ...f, display_timeout_seconds: parseInt(e.target.value) || 5 }))}
+                className="form-input"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Delay after transaction completion before returning to Welcome screen (default: 5s)
+              </p>
             </div>
           </div>
         </div>
