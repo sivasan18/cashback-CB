@@ -20,3 +20,4 @@ SET
   merchant_upi_id = COALESCE(merchant_upi_id, '7708481818@upi'),
   merchant_display_name = COALESCE(merchant_display_name, 'Smart Cashback')
 WHERE id IS NOT NULL;
+
