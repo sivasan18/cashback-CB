@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   Receipt, Users, Wallet, Search, BarChart3,
   LayoutDashboard, Settings, LogOut, Menu, X,
-  Zap, Sun, Moon, Laptop
+  Zap, Sun, Moon, Laptop, Monitor
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -187,7 +187,17 @@ export default function AppLayout() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-2.5 ml-auto">
+            <button
+              type="button"
+              onClick={() => window.open('/customer-display', 'customer-display', 'popup,width=1200,height=800')}
+              className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5"
+              title="Open Customer Display on second monitor"
+            >
+              <Monitor size={14} className="text-brand-600 dark:text-brand-400" />
+              <span className="hidden md:inline">Customer Display</span>
+            </button>
+
             <NavLink
               to="/billing"
               className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5"

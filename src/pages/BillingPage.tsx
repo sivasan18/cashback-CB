@@ -3,16 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search, CheckCircle, Phone, ShoppingBag,
   Wallet, Calculator, Receipt, RefreshCw,
-  UserPlus, Plus
+  UserPlus, Plus, QrCode, Banknote, CreditCard,
+  Monitor, MonitorOff
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { calculateCashback, formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
+import { useDisplayStore, type PaymentMethod } from '@/store/displayStore'
+import { buildUPILink, generateQRCodeURL, SHOP_UPI_CONFIG } from '@/lib/upi'
+import { QRCodeSVG } from 'qrcode.react'
 import { sendNotification } from '@/lib/notifications'
 import toast from 'react-hot-toast'
 import type { Customer, ServiceCategory } from '@/types'
 
-type Step = 'mobile' | 'customer' | 'billing' | 'confirm' | 'done'
+type Step = 'mobile' | 'customer' | 'billing' | 'payment' | 'confirm' | 'done'
 
 interface BillSummary {
   billAmount: number
@@ -48,6 +52,13 @@ export default function BillingPage() {
   const [cashbackToRedeem, setCashbackToRedeem] = useState('')
   const [userEditedRedeem, setUserEditedRedeem] = useState(false)
   const [notes, setNotes] = useState('')
+
+  // Payment method
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
+
+  // Customer display
+  const { broadcast, resetDisplay } = useDisplayStore()
+  const [displayActive, setDisplayActive] = useState(false)
 
   // Confirmation & Save
   const [summary, setSummary] = useState<BillSummary | null>(null)
@@ -256,6 +267,38 @@ export default function BillingPage() {
   const liveCashbackEarned = billNum >= minEligible ? Math.round(liveAmountPaid * cbPct) / 100 : 0
   const liveProjectedBalance = availableBalance - currentRedeemNum + liveCashbackEarned
 
+  // Real-time broadcast to customer display during billing input
+  useEffect(() => {
+    if (displayActive && step === 'billing' && customer) {
+      broadcast({
+        mode: 'billing',
+        customerName: customer.name,
+        customerMobile: customer.mobile,
+        shopName: settings?.shop_name ?? 'Smart Cashback Shop',
+        serviceCategory,
+        billAmount: billNum,
+        cashbackRedeemed: currentRedeemNum,
+        amountPayable: liveAmountPaid,
+        cashbackEarned: liveCashbackEarned,
+        newWalletBalance: liveProjectedBalance,
+        cashbackPercentage: cbPct,
+      })
+    }
+  }, [
+    displayActive,
+    step,
+    customer,
+    serviceCategory,
+    billNum,
+    currentRedeemNum,
+    liveAmountPaid,
+    liveCashbackEarned,
+    liveProjectedBalance,
+    cbPct,
+    settings?.shop_name,
+    broadcast,
+  ])
+
   const handleCalculate = () => {
     if (isNaN(billNum) || billNum <= 0) {
       toast.error('Enter a valid bill amount greater than zero')
@@ -276,6 +319,84 @@ export default function BillingPage() {
     }
 
     setSummary(result)
+    setStep('payment')
+
+    // Broadcast billing info to customer display
+    if (displayActive) {
+      broadcast({
+        mode: 'billing',
+        customerName: customer?.name ?? '',
+        customerMobile: customer?.mobile ?? '',
+        shopName: settings?.shop_name ?? 'Smart Cashback Shop',
+        serviceCategory,
+        billAmount: result.billAmount,
+        cashbackRedeemed: result.cashbackToRedeem,
+        amountPayable: result.amountPaid,
+        cashbackEarned: result.cashbackEarned,
+        newWalletBalance: result.newBalance,
+        cashbackPercentage: cbPct,
+        paymentMethod: null,
+        upiLink: null,
+        upiQRUrl: null,
+        transactionId: null,
+      })
+    }
+  }
+
+  // ─── Payment Method Selection & QR Generation ──────────────────────
+  const handleSelectPaymentMethod = (method: PaymentMethod) => {
+    setPaymentMethod(method)
+
+    if (displayActive && summary && customer) {
+      let upiLink: string | null = null
+      let upiQRUrl: string | null = null
+
+      if (method === 'upi') {
+        upiLink = buildUPILink({
+          payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
+          payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
+          amount: summary.amountPaid,
+          transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
+        })
+        upiQRUrl = generateQRCodeURL(upiLink, 300)
+      }
+
+      broadcast({
+        mode: 'payment-pending',
+        paymentMethod: method,
+        upiLink,
+        upiQRUrl,
+      })
+    }
+  }
+
+  const handleProceedToConfirm = () => {
+    if (!summary) return
+
+    // Generate UPI link if payment method is UPI
+    let upiLink: string | null = null
+    let upiQRUrl: string | null = null
+
+    if (paymentMethod === 'upi' && customer) {
+      upiLink = buildUPILink({
+        payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
+        payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
+        amount: summary.amountPaid,
+        transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
+      })
+      upiQRUrl = generateQRCodeURL(upiLink, 300)
+    }
+
+    // Broadcast payment pending to customer display
+    if (displayActive) {
+      broadcast({
+        mode: 'payment-pending',
+        paymentMethod,
+        upiLink,
+        upiQRUrl,
+      })
+    }
+
     setStep('confirm')
   }
 
@@ -304,6 +425,19 @@ export default function BillingPage() {
 
       setLastSavedTxId(data as string)
 
+      // Broadcast payment success to customer display
+      if (displayActive) {
+        broadcast({
+          mode: 'payment-success',
+          transactionId: data as string,
+        })
+
+        // Auto-switch to thank you after 5 seconds
+        setTimeout(() => {
+          broadcast({ mode: 'thank-you' })
+        }, 5000)
+      }
+
       await sendNotification({
         event: 'cashback_earned',
         customerId: customer.id,
@@ -323,6 +457,13 @@ export default function BillingPage() {
 
       if (updatedCustomer) {
         setCustomer(updatedCustomer as Customer)
+
+        // Update customer display with real wallet balance
+        if (displayActive) {
+          broadcast({
+            newWalletBalance: (updatedCustomer as Customer).cashback_balance,
+          })
+        }
       }
 
       setStep('done')
@@ -348,6 +489,12 @@ export default function BillingPage() {
     setSuggestions([])
     setShowSuggestions(false)
     setLastSavedTxId(null)
+    setPaymentMethod('cash')
+
+    // Reset customer display
+    if (displayActive) {
+      resetDisplay()
+    }
   }
 
   const handleBillSameCustomerAgain = () => {
@@ -359,8 +506,8 @@ export default function BillingPage() {
     setStep('billing')
   }
 
-  const stepLabels: Step[] = ['mobile', 'customer', 'billing', 'confirm', 'done']
-  const stepDisplay = ['Search', 'Register', 'Billing', 'Review', 'Saved']
+  const stepLabels: Step[] = ['mobile', 'customer', 'billing', 'payment', 'confirm', 'done']
+  const stepDisplay = ['Search', 'Register', 'Billing', 'Payment', 'Review', 'Saved']
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -372,9 +519,33 @@ export default function BillingPage() {
           </h1>
           <p className="section-subtitle">Point of Sale</p>
         </div>
-        <button onClick={resetBilling} className="btn-secondary text-xs flex items-center gap-1.5">
-          <RefreshCw size={14} /> Reset Form
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Customer Display Toggle */}
+          <button
+            onClick={() => {
+              setDisplayActive(!displayActive)
+              if (!displayActive) {
+                window.open('/customer-display', 'customer-display', 'popup,width=1024,height=768')
+                toast.success('Customer display opened! Drag to second monitor.')
+              } else {
+                resetDisplay()
+                toast('Customer display disconnected', { icon: '📺' })
+              }
+            }}
+            className={`text-xs flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold transition-all ${
+              displayActive
+                ? 'bg-brand-100 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800'
+                : 'btn-secondary'
+            }`}
+            title={displayActive ? 'Disconnect customer display' : 'Open customer-facing display'}
+          >
+            {displayActive ? <Monitor size={14} /> : <MonitorOff size={14} />}
+            {displayActive ? 'Display On' : 'Display'}
+          </button>
+          <button onClick={resetBilling} className="btn-secondary text-xs flex items-center gap-1.5">
+            <RefreshCw size={14} /> Reset Form
+          </button>
+        </div>
       </div>
 
       {/* Progress Indicators */}
@@ -798,7 +969,107 @@ export default function BillingPage() {
           </div>
         )}
 
-        {/* ── Step 4: Confirm ── */}
+        {/* ── Step 4: Payment Method Selection ── */}
+        {step === 'payment' && customer && summary && (
+          <div className="space-y-5 animate-fade-in">
+            <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <CreditCard size={16} className="text-brand-600 dark:text-brand-400" /> Select Payment Method
+            </h2>
+
+            {/* Bill Summary */}
+            <div className="bg-slate-50 dark:bg-dark-950 p-4 rounded-xl text-sm flex items-center justify-between border border-slate-100 dark:border-dark-800">
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-white">{customer.name}</p>
+                <p className="text-slate-500 dark:text-slate-400 font-mono text-xs">{customer.mobile}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400">Amount Payable</p>
+                <p className="text-lg font-extrabold text-brand-700 dark:text-brand-400">
+                  {formatCurrency(summary.amountPaid)}
+                </p>
+              </div>
+            </div>
+
+            {/* Payment Methods Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { method: 'cash' as PaymentMethod, icon: Banknote, label: 'Cash', desc: 'Pay with cash', color: 'text-emerald-600 dark:text-emerald-400' },
+                { method: 'upi' as PaymentMethod, icon: QrCode, label: 'UPI', desc: 'GPay, PhonePe, Paytm', color: 'text-violet-600 dark:text-violet-400' },
+                { method: 'card' as PaymentMethod, icon: CreditCard, label: 'Card', desc: 'Debit / Credit card', color: 'text-blue-600 dark:text-blue-400' },
+                { method: 'wallet-only' as PaymentMethod, icon: Wallet, label: 'Wallet Only', desc: 'Pay with cashback', color: 'text-orange-600 dark:text-orange-400' },
+              ]).map(({ method, icon: Icon, label, desc, color }) => {
+                const isSelected = paymentMethod === method
+                const isWalletDisabled = method === 'wallet-only' && summary.amountPaid > 0
+                return (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => handleSelectPaymentMethod(method)}
+                    disabled={isWalletDisabled}
+                    className={`p-4 rounded-2xl border-2 text-left transition-all ${
+                      isSelected
+                        ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/40 ring-2 ring-brand-200 dark:ring-brand-800'
+                        : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600'
+                    } ${isWalletDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <Icon size={22} className={color} />
+                    <p className={`font-semibold text-sm mt-2 ${isSelected ? 'text-brand-700 dark:text-brand-300' : 'text-slate-900 dark:text-white'}`}>
+                      {label}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{desc}</p>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* UPI QR Preview (admin side) */}
+            {paymentMethod === 'upi' && summary.amountPaid > 0 && (
+              <div className="bg-slate-50 dark:bg-dark-950/70 border border-slate-200/80 dark:border-dark-800 rounded-2xl p-5 text-center space-y-3">
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold">UPI QR Code Preview</p>
+                <div className="inline-flex p-3 bg-white rounded-2xl shadow-sm border border-slate-100">
+                  <QRCodeSVG
+                    value={buildUPILink({
+                      payeeVPA: SHOP_UPI_CONFIG.payeeVPA,
+                      payeeName: settings?.shop_name ?? SHOP_UPI_CONFIG.payeeName,
+                      amount: summary.amountPaid,
+                      transactionNote: `Bill - ${customer.name} - ${serviceCategory}`,
+                    })}
+                    size={160}
+                    level="M"
+                    includeMargin={true}
+                  />
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  UPI ID: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{SHOP_UPI_CONFIG.payeeVPA}</span>
+                </p>
+                {displayActive && (
+                  <p className="text-[11px] text-brand-600 dark:text-brand-400 font-medium">
+                    ✓ QR code is displayed on customer screen
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStep('billing')}
+                className="btn-secondary flex-1"
+              >
+                Back to Edit
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedToConfirm}
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={16} /> Review & Confirm
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 5: Confirm ── */}
         {step === 'confirm' && customer && summary && (
           <div className="space-y-5 animate-fade-in">
             <h2 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
@@ -840,6 +1111,11 @@ export default function BillingPage() {
                   className: 'text-brand-700 dark:text-brand-300 font-extrabold text-base',
                   highlight: true,
                 },
+                {
+                  label: 'Payment Method',
+                  value: paymentMethod === 'upi' ? '💳 UPI' : paymentMethod === 'card' ? '💳 Card' : paymentMethod === 'wallet-only' ? '👛 Wallet Only' : '💵 Cash',
+                  className: 'text-slate-900 dark:text-white font-semibold',
+                },
               ].map(({ label, value, className, highlight }, i) => (
                 <div
                   key={i}
@@ -860,11 +1136,11 @@ export default function BillingPage() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setStep('billing')}
+                onClick={() => setStep('payment')}
                 className="btn-secondary flex-1"
                 disabled={saving}
               >
-                Back to Edit
+                Back to Payment
               </button>
               <button
                 type="button"
@@ -878,7 +1154,7 @@ export default function BillingPage() {
           </div>
         )}
 
-        {/* ── Step 5: Completed ── */}
+        {/* ── Step 6: Completed ── */}
         {step === 'done' && summary && customer && (
           <div className="text-center space-y-5 py-4 animate-fade-in">
             <div className="w-20 h-20 rounded-full bg-brand-100 dark:bg-brand-950/80 text-brand-600 dark:text-brand-400 flex items-center justify-center mx-auto shadow-sm">
