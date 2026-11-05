@@ -58,12 +58,13 @@ export default function CustomerDisplayPage() {
   const shopName = session.shopName || 'Smart Cashback'
 
   // Map modes to active state
-  const isWelcome = session.mode === 'welcome' || (!session.customerName && session.mode !== 'payment-success' && session.mode !== 'transaction-complete')
-  const isCustomerSelected = session.mode === 'customer-selected' || session.mode === 'billing'
-  const isPaymentSelection = session.mode === 'payment-selection' || session.mode === 'payment-pending'
-  const isWaitingPayment = session.mode === 'waiting-payment' || session.paymentStatus === 'awaiting_payment'
-  const isPaymentSuccess = session.mode === 'payment-success' || session.paymentStatus === 'payment_successful'
-  const isTransactionComplete = session.mode === 'transaction-complete' || session.mode === 'thank-you'
+  const isFailedOrCancelled = session.paymentStatus === 'payment_failed' || session.paymentStatus === 'payment_expired'
+  const isWelcome = session.mode === 'welcome' || isFailedOrCancelled || (!session.customerName && session.mode !== 'payment-success' && session.mode !== 'transaction-complete')
+  const isCustomerSelected = !isWelcome && (session.mode === 'customer-selected' || session.mode === 'billing')
+  const isPaymentSelection = !isWelcome && (session.mode === 'payment-selection' || session.mode === 'payment-pending')
+  const isWaitingPayment = !isWelcome && (session.mode === 'waiting-payment' || session.paymentStatus === 'awaiting_payment')
+  const isPaymentSuccess = !isWelcome && (session.mode === 'payment-success' || session.paymentStatus === 'payment_successful')
+  const isTransactionComplete = !isWelcome && (session.mode === 'transaction-complete' || session.mode === 'thank-you')
 
   return (
     <div className="relative min-h-screen bg-slate-950 text-white flex flex-col justify-between overflow-hidden select-none font-sans">
@@ -187,7 +188,7 @@ function State1WelcomeScreen({ shopName }: { shopName: string }) {
           Welcome!
         </h2>
         <p className="text-lg sm:text-xl text-slate-300 font-medium">
-          Ready for your order
+          Please wait while we prepare your bill.
         </p>
       </div>
 

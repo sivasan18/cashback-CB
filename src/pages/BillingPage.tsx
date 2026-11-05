@@ -4,7 +4,7 @@ import {
   Search, CheckCircle, Phone, ShoppingBag,
   Wallet, Calculator, Receipt, RefreshCw,
   UserPlus, Plus, QrCode, Banknote, CreditCard,
-  Monitor, MonitorOff
+  Monitor, MonitorOff, ArrowLeft, X
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { calculateCashback, formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
@@ -62,7 +62,8 @@ export default function BillingPage() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentVerificationStatus>('awaiting_payment')
 
   // Customer display
-  const { broadcast, resetDisplay } = useDisplayStore()
+  const { session: displaySession, broadcast, resetDisplay, startNewSession, cancelPayment } = useDisplayStore()
+  const [currentSessionId, setCurrentSessionId] = useState<string>('')
   const [displayActive, setDisplayActive] = useState(false)
 
   // Confirmation & Save
@@ -145,6 +146,9 @@ export default function BillingPage() {
   }
 
   const handleSelectCustomer = (selected: Customer) => {
+    const sid = startNewSession()
+    setCurrentSessionId(sid)
+
     setCustomer(selected)
     setMobile(selected.mobile)
     setSuggestions([])
@@ -165,6 +169,7 @@ export default function BillingPage() {
 
     // Broadcast customer info to display immediately
     broadcast({
+      sessionId: sid,
       mode: 'customer-selected',
       customerName: selected.name,
       customerMobile: selected.mobile,
@@ -376,6 +381,7 @@ export default function BillingPage() {
 
     // Broadcast payment selection (default Cash)
     broadcast({
+      sessionId: currentSessionId,
       mode: 'payment-selection',
       customerName: customer?.name ?? '',
       customerMobile: customer?.mobile ?? '',
@@ -419,6 +425,7 @@ export default function BillingPage() {
       }
 
       broadcast({
+        sessionId: currentSessionId,
         mode: 'payment-selection',
         paymentMethod: method,
         paymentStatus: 'awaiting_payment',
@@ -431,13 +438,30 @@ export default function BillingPage() {
     }
   }
 
+  const handleBackFromPayment = () => {
+    // TEST 1: Enter customer details and generate a UPI QR code. Click Back.
+    // Expected: Customer display immediately returns to Welcome.
+    resetDisplay(currentSessionId, 'back')
+    setPaymentStatus('awaiting_payment')
+    setUpiVerified(false)
+    setStep('billing')
+  }
+
+  const handleCancelPayment = () => {
+    // TEST 2: Generate a QR code but do not pay. Click Cancel.
+    // Expected: QR code and previous customer information disappear.
+    setPaymentStatus('payment_failed')
+    setUpiVerified(false)
+    resetDisplay(currentSessionId, 'cancelled')
+    resetBilling()
+    toast('Payment cancelled. Customer display reset.', { icon: 'ℹ️' })
+  }
+
   const handlePaymentFailed = () => {
     setPaymentStatus('payment_failed')
     setUpiVerified(false)
+    resetDisplay(currentSessionId, 'payment_failed')
     toast.error('Payment marked as Failed / Cancelled. Transaction was NOT saved and cashback was NOT credited.')
-    broadcast({
-      paymentStatus: 'payment_failed',
-    })
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -551,7 +575,8 @@ export default function BillingPage() {
     setShowAdminQR(false)
 
     // Reset customer display back to Welcome state
-    resetDisplay()
+    resetDisplay(currentSessionId, 'reset')
+    setCurrentSessionId('')
   }
 
   const handleBillSameCustomerAgain = () => {
@@ -568,7 +593,10 @@ export default function BillingPage() {
     setStep('billing')
 
     if (customer) {
+      const sid = startNewSession()
+      setCurrentSessionId(sid)
       broadcast({
+        sessionId: sid,
         mode: 'customer-selected',
         customerName: customer.name,
         customerMobile: customer.mobile,
@@ -829,7 +857,7 @@ export default function BillingPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('mobile')}
+                onClick={resetBilling}
                 className="btn-secondary flex-1"
               >
                 Back
@@ -1016,7 +1044,7 @@ export default function BillingPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('mobile')}
+                onClick={resetBilling}
                 className="btn-secondary flex-1"
               >
                 Change Customer
@@ -1285,39 +1313,41 @@ export default function BillingPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('billing')}
-                className="btn-secondary flex-1"
+                onClick={handleBackFromPayment}
+                className="btn-secondary flex-1 py-2.5 flex items-center justify-center gap-1.5"
                 disabled={saving}
+                title="Return to edit bill and clear customer display"
               >
-                Back to Edit Bill
+                <ArrowLeft size={16} />
+                <span>Back</span>
               </button>
 
-              {paymentMethod === 'upi' && (
-                <button
-                  type="button"
-                  onClick={handlePaymentFailed}
-                  className="btn-danger flex-1"
-                  disabled={saving}
-                >
-                  ✕ Mark Payment Failed
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleCancelPayment}
+                className="btn-secondary text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 flex-1 py-2.5 flex items-center justify-center gap-1.5"
+                disabled={saving}
+                title="Cancel payment and return to New Bill"
+              >
+                <X size={16} />
+                <span>Cancel</span>
+              </button>
 
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="btn-primary flex-1 py-3 text-base flex items-center justify-center gap-2"
+                className="btn-primary flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2"
                 disabled={saving}
               >
                 <CheckCircle size={18} />
                 {saving
                   ? 'Recording Transaction…'
                   : paymentMethod === 'upi'
-                  ? '✓ Verify & Confirm Payment'
-                  : '✓ Confirm Cash & Save Bill'}
+                  ? 'Verify & Confirm'
+                  : 'Confirm Cash & Save'}
               </button>
             </div>
           </div>

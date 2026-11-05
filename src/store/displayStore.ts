@@ -27,6 +27,7 @@ export type PaymentVerificationStatus =
   | 'payment_expired'
 
 export interface DisplaySession {
+  sessionId: string
   mode: DisplayMode
   customerName: string
   customerMobile: string
@@ -60,6 +61,7 @@ export interface DisplaySession {
 }
 
 export const EMPTY_SESSION: DisplaySession = {
+  sessionId: '',
   mode: 'welcome',
   customerName: '',
   customerMobile: '',
@@ -112,7 +114,20 @@ function loadInitialState(): DisplaySession {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(raw) as Partial<DisplaySession>
+      // Clean slate if session was welcome, failed, cancelled, expired, or stale (> 10 mins)
+      const isStale = Date.now() - (parsed.updatedAt || 0) > 10 * 60 * 1000
+      const isCleanMode =
+        !parsed.customerName ||
+        parsed.mode === 'welcome' ||
+        parsed.mode === 'thank-you' ||
+        parsed.mode === 'transaction-complete' ||
+        parsed.paymentStatus === 'payment_failed' ||
+        parsed.paymentStatus === 'payment_expired'
+
+      if (isStale || isCleanMode) {
+        return { ...EMPTY_SESSION }
+      }
       return { ...EMPTY_SESSION, ...parsed }
     }
   } catch {
@@ -124,8 +139,10 @@ function loadInitialState(): DisplaySession {
 interface DisplayStore {
   session: DisplaySession
   connected: boolean
+  startNewSession: () => string
   broadcast: (update: Partial<DisplaySession>) => void
-  resetDisplay: () => void
+  resetDisplay: (targetSessionId?: string, reason?: string) => void
+  cancelPayment: (targetSessionId?: string) => void
   startListening: () => () => void
   pingDisplay: () => void
 }
@@ -134,11 +151,33 @@ export const useDisplayStore = create<DisplayStore>((set, get) => ({
   session: loadInitialState(),
   connected: false,
 
+  startNewSession: () => {
+    const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+    const updated: DisplaySession = {
+      ...EMPTY_SESSION,
+      sessionId: newSessionId,
+      shopName: get().session.shopName || 'Smart Cashback',
+      merchantUpiId: get().session.merchantUpiId || '7708481818@upi',
+      merchantDisplayName: get().session.merchantDisplayName || 'Smart Cashback Shop',
+      updatedAt: Date.now(),
+    }
+    set({ session: updated })
+    persistState(updated)
+    return newSessionId
+  },
+
   broadcast: (update: Partial<DisplaySession>) => {
     const current = get().session
+    // Ensure every active session has a unique sessionId
+    const sessionId =
+      update.sessionId ||
+      current.sessionId ||
+      `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+
     const merged: DisplaySession = {
       ...current,
       ...update,
+      sessionId,
       updatedAt: Date.now(),
     }
     set({ session: merged })
@@ -167,11 +206,20 @@ export const useDisplayStore = create<DisplayStore>((set, get) => ({
     }
   },
 
-  resetDisplay: () => {
+  resetDisplay: (targetSessionId?: string, reason?: string) => {
+    const current = get().session
+    // Guard against stale cancellation: If targetSessionId was given and doesn't match current active session, ignore
+    if (targetSessionId && current.sessionId && current.sessionId !== targetSessionId) {
+      console.log(`[DisplayStore] Ignored stale reset for session ${targetSessionId} (active is ${current.sessionId})`)
+      return
+    }
+
     const reset: DisplaySession = {
       ...EMPTY_SESSION,
-      shopName: get().session.shopName || 'Smart Cashback',
-      merchantUpiId: get().session.merchantUpiId || '7708481818@upi',
+      sessionId: '',
+      shopName: current.shopName || 'Smart Cashback',
+      merchantUpiId: current.merchantUpiId || '7708481818@upi',
+      merchantDisplayName: current.merchantDisplayName || 'Smart Cashback Shop',
       updatedAt: Date.now(),
     }
     set({ session: reset })
@@ -179,10 +227,38 @@ export const useDisplayStore = create<DisplayStore>((set, get) => ({
 
     try {
       const ch = getChannel()
-      if (ch) ch.postMessage({ type: 'display-update', payload: reset })
+      if (ch) {
+        ch.postMessage({
+          type: 'display-reset',
+          targetSessionId,
+          reason: reason || 'reset',
+          payload: reset,
+        })
+      }
     } catch {
       // Ignore
     }
+
+    try {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: STORAGE_KEY,
+          newValue: JSON.stringify(reset),
+        })
+      )
+    } catch {
+      // Ignore
+    }
+  },
+
+  cancelPayment: (targetSessionId?: string) => {
+    const current = get().session
+    if (targetSessionId && current.sessionId && current.sessionId !== targetSessionId) {
+      return
+    }
+
+    // Cancel immediately wipes the customer display back to Welcome
+    get().resetDisplay(targetSessionId, 'cancelled')
   },
 
   pingDisplay: () => {
@@ -195,14 +271,23 @@ export const useDisplayStore = create<DisplayStore>((set, get) => ({
   },
 
   startListening: () => {
-    // Load latest stored state immediately
+    // Load latest stored state immediately (clean Welcome if stale/failed)
     const initial = loadInitialState()
     set({ session: initial, connected: true })
 
     const ch = getChannel()
 
     const bcHandler = (event: MessageEvent) => {
-      if (event.data?.type === 'display-update' && event.data.payload) {
+      const current = get().session
+
+      if (event.data?.type === 'display-reset') {
+        const targetId = event.data?.targetSessionId
+        // If cancellation is for an older session while we have already moved to a newer session, ignore
+        if (targetId && current.sessionId && current.sessionId !== targetId) {
+          return
+        }
+        set({ session: event.data.payload || EMPTY_SESSION, connected: true })
+      } else if (event.data?.type === 'display-update' && event.data.payload) {
         set({ session: event.data.payload, connected: true })
       } else if (event.data?.type === 'admin-ping') {
         set({ connected: true })
@@ -213,8 +298,14 @@ export const useDisplayStore = create<DisplayStore>((set, get) => ({
     const storageHandler = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
-          const parsed = JSON.parse(e.newValue)
-          set({ session: parsed, connected: true })
+          const parsed = JSON.parse(e.newValue) as DisplaySession
+          const current = get().session
+          // If reset payload arrives
+          if (parsed.mode === 'welcome' && !parsed.customerName) {
+            set({ session: parsed, connected: true })
+          } else {
+            set({ session: parsed, connected: true })
+          }
         } catch {
           // Ignore parse errors
         }
