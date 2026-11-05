@@ -198,6 +198,13 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     return corsResponse()
   }
 
+  // Display sessions and status can function without DB if needed, but all database operations require env.DB
+  if (!env.DB && !pathname.startsWith('/display')) {
+    return json({
+      error: 'D1 database binding "DB" is not attached to this Cloudflare Worker/Pages Function. In Cloudflare Pages Settings -> Functions -> D1 Database Bindings, ensure the binding variable name is "DB".'
+    }, 503)
+  }
+
   try {
     // ─── AUTHENTICATION ROUTES ────────────────────────────────────────────────
     if (pathname === '/auth/login' && method === 'POST') {

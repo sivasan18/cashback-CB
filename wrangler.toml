@@ -9,7 +9,7 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "smart-cashback-db"
-database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+database_id = "bc0d46f8-a5e7-4dcd-a4eb-d903d4653d4e"
 migrations_dir = "migrations"
 
 # Cloudflare R2 Bucket Binding (Private Object Storage)
