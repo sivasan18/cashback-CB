@@ -101,11 +101,11 @@ export default function DashboardPage() {
 
   const statCards = [
     { label: "Today's Sales", value: formatCurrency(stats.todaySales), icon: ShoppingBag, color: 'text-brand-700 dark:text-brand-300', bg: 'bg-brand-50/70 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900/60', iconBg: 'bg-brand-100 dark:bg-brand-900/60' },
-    { label: 'Total Customers', value: stats.totalCustomers.toString(), icon: Users, color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/60', iconBg: 'bg-blue-100 dark:bg-blue-900/60' },
-    { label: 'New Today', value: stats.todayNewCustomers.toString(), icon: Users, color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/60', iconBg: 'bg-emerald-100 dark:bg-emerald-900/60' },
-    { label: 'Total Cashback Issued', value: formatCurrency(stats.totalCashbackIssued), icon: Gift, color: 'text-brand-700 dark:text-brand-300', bg: 'bg-brand-50/70 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900/60', iconBg: 'bg-brand-100 dark:bg-brand-900/60' },
-    { label: 'Total Cashback Used', value: formatCurrency(stats.totalCashbackRedeemed), icon: Receipt, color: 'text-orange-700 dark:text-orange-300', bg: 'bg-orange-50/70 dark:bg-orange-950/40 border border-orange-100 dark:border-orange-900/60', iconBg: 'bg-orange-100 dark:bg-orange-900/60' },
-    { label: 'Available Wallet Liability', value: formatCurrency(stats.outstandingCashback), icon: Wallet, color: 'text-brand-800 dark:text-brand-200', bg: 'bg-brand-100/50 dark:bg-brand-950/70 border border-brand-200 dark:border-brand-800', iconBg: 'bg-brand-200 dark:bg-brand-900' },
+    { label: 'Total Customers', value: stats.totalCustomers.toString(), icon: Users, color: 'text-brand-800 dark:text-brand-200', bg: 'bg-brand-50/50 dark:bg-brand-950/30 border border-brand-100 dark:border-brand-900/50', iconBg: 'bg-brand-100 dark:bg-brand-900/50' },
+    { label: 'New Today', value: stats.todayNewCustomers.toString(), icon: Users, color: 'text-brand-700 dark:text-brand-300', bg: 'bg-brand-50/70 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900/60', iconBg: 'bg-brand-100 dark:bg-brand-900/60' },
+    { label: 'Cashback Issued', value: formatCurrency(stats.totalCashbackIssued), icon: Gift, color: 'text-brand-700 dark:text-brand-300', bg: 'bg-brand-50/70 dark:bg-brand-950/40 border border-brand-100 dark:border-brand-900/60', iconBg: 'bg-brand-100 dark:bg-brand-900/60' },
+    { label: 'Cashback Used', value: formatCurrency(stats.totalCashbackRedeemed), icon: Receipt, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-50/70 dark:bg-dark-950/40 border border-slate-200 dark:border-dark-800', iconBg: 'bg-slate-100 dark:bg-dark-900' },
+    { label: 'Wallet Liability', value: formatCurrency(stats.outstandingCashback), icon: Wallet, color: 'text-brand-800 dark:text-brand-200', bg: 'bg-brand-100/60 dark:bg-brand-950/70 border border-brand-200 dark:border-brand-800', iconBg: 'bg-brand-200 dark:bg-brand-900' },
   ]
 
   const chartOptions = {
@@ -198,8 +198,8 @@ export default function DashboardPage() {
                 datasets: [{
                   label: 'Sales (₹)',
                   data: dailySales.data,
-                  backgroundColor: 'rgba(5, 150, 105, 0.2)',
-                  borderColor: '#059669',
+                  backgroundColor: 'rgba(91, 61, 245, 0.25)',
+                  borderColor: '#5B3DF5',
                   borderWidth: 2,
                   borderRadius: 6,
                 }],

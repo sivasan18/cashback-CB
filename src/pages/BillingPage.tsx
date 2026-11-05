@@ -1077,20 +1077,20 @@ export default function BillingPage() {
                 onClick={() => handleSelectPaymentMethod('cash')}
                 className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
                   paymentMethod === 'cash'
-                    ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40 ring-4 ring-emerald-500/10 shadow-sm'
+                    ? 'border-brand-600 bg-brand-50/70 dark:bg-brand-950/40 ring-4 ring-brand-500/10 shadow-sm'
                     : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600 bg-white dark:bg-dark-900'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                     paymentMethod === 'cash'
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400'
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-brand-100 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300'
                   }`}>
                     <Banknote size={22} />
                   </div>
                   {paymentMethod === 'cash' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-brand-500 animate-pulse" />
                   )}
                 </div>
                 <div className="mt-3">
@@ -1098,7 +1098,7 @@ export default function BillingPage() {
                     CASH PAYMENT
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Customer pays cash at the counter
+                    Pay at counter
                   </p>
                 </div>
               </button>
@@ -1109,20 +1109,20 @@ export default function BillingPage() {
                 onClick={() => handleSelectPaymentMethod('upi')}
                 className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
                   paymentMethod === 'upi'
-                    ? 'border-violet-500 bg-violet-50/70 dark:bg-violet-950/40 ring-4 ring-violet-500/10 shadow-sm'
+                    ? 'border-brand-600 bg-brand-50/70 dark:bg-brand-950/40 ring-4 ring-brand-500/10 shadow-sm'
                     : 'border-slate-200 dark:border-dark-700 hover:border-slate-300 dark:hover:border-dark-600 bg-white dark:bg-dark-900'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                     paymentMethod === 'upi'
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-violet-100 dark:bg-violet-950/80 text-violet-600 dark:text-violet-400'
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-brand-100 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300'
                   }`}>
                     <QrCode size={22} />
                   </div>
                   {paymentMethod === 'upi' && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-violet-500 animate-ping" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-brand-500 animate-ping" />
                   )}
                 </div>
                 <div className="mt-3">
@@ -1130,7 +1130,7 @@ export default function BillingPage() {
                     UPI QR PAYMENT
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Dynamic QR on customer display screen
+                    QR on customer display
                   </p>
                 </div>
               </button>
@@ -1147,8 +1147,8 @@ export default function BillingPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-slate-400">Cashback to Issue</p>
-                    <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
+                    <p className="text-xs text-slate-400">Cashback</p>
+                    <p className="text-base font-bold text-brand-600 dark:text-brand-400">
                       +{formatCurrency(summary.cashbackEarned)}
                     </p>
                   </div>
@@ -1157,7 +1157,7 @@ export default function BillingPage() {
                 {/* Cash Calculator */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="form-label text-xs">Cash Received from Customer (₹)</label>
+                    <label className="form-label text-xs">Cash Received (₹)</label>
                     <input
                       type="number"
                       min="0"
@@ -1170,7 +1170,7 @@ export default function BillingPage() {
                   </div>
 
                   <div>
-                    <label className="form-label text-xs">Change to Return to Customer</label>
+                    <label className="form-label text-xs">Change to Return</label>
                     <div className="form-input bg-slate-100/70 dark:bg-dark-900 font-extrabold text-base flex items-center">
                       {parseFloat(cashReceived) > summary.amountPaid
                         ? formatCurrency(parseFloat(cashReceived) - summary.amountPaid)
@@ -1198,25 +1198,25 @@ export default function BillingPage() {
             {paymentMethod === 'upi' && (
               <div className="bg-slate-50 dark:bg-dark-950/70 border border-slate-200/80 dark:border-dark-800 rounded-2xl p-5 space-y-4 animate-fade-in">
                 {/* Status Indicator */}
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-900/60">
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-brand-50/70 dark:bg-brand-950/50 border border-brand-200 dark:border-brand-900/60">
                   <div className="flex items-center gap-3">
                     <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-violet-600" />
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-brand-600" />
                     </span>
                     <div>
-                      <p className="text-xs font-bold text-violet-900 dark:text-violet-200">
+                      <p className="text-xs font-bold text-brand-900 dark:text-brand-200">
                         {paymentStatus === 'payment_failed'
-                          ? 'Payment Cancelled / Failed'
-                          : `Awaiting UPI Payment: ${formatCurrency(summary.amountPaid)}`}
+                          ? 'Payment Cancelled'
+                          : `Awaiting UPI: ${formatCurrency(summary.amountPaid)}`}
                       </p>
-                      <p className="text-[11px] text-violet-700 dark:text-violet-400">
-                        Dynamic QR code active on customer display screen
+                      <p className="text-[11px] text-brand-700 dark:text-brand-400">
+                        Dynamic QR on customer screen
                       </p>
                     </div>
                   </div>
 
-                  <span className="text-xs font-mono font-bold bg-white dark:bg-dark-900 px-2.5 py-1 rounded-lg border border-violet-200 dark:border-violet-800 text-violet-800 dark:text-violet-300">
+                  <span className="text-xs font-mono font-bold bg-white dark:bg-dark-900 px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 text-brand-800 dark:text-brand-300">
                     {settings?.merchant_upi_id || '7708481818@upi'}
                   </span>
                 </div>

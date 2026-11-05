@@ -186,14 +186,13 @@ export default function WalletLookupPage() {
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Outstanding Liability
                 </span>
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-950/70 text-brand-600 dark:text-brand-400 flex items-center justify-center">
                   <Wallet size={16} />
                 </div>
               </div>
               <p className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
                 {formatCurrency(walletStats.outstandingBalance)}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Available in customer wallets</p>
             </div>
 
             <div className="stat-card">
@@ -208,7 +207,6 @@ export default function WalletLookupPage() {
               <p className="text-xl lg:text-2xl font-bold text-brand-600 dark:text-brand-400">
                 {formatCurrency(walletStats.totalIssued)}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Lifetime 2% rewards granted</p>
             </div>
 
             <div className="stat-card">
@@ -216,14 +214,13 @@ export default function WalletLookupPage() {
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Total Cashback Used
                 </span>
-                <div className="w-8 h-8 rounded-lg bg-orange-50 dark:bg-orange-950/70 text-orange-600 dark:text-orange-400 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-dark-800 text-slate-600 dark:text-slate-400 flex items-center justify-center">
                   <Receipt size={16} />
                 </div>
               </div>
-              <p className="text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
+              <p className="text-xl lg:text-2xl font-bold text-slate-800 dark:text-slate-200">
                 {formatCurrency(walletStats.totalRedeemed)}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Redeemed by customers</p>
             </div>
 
             <div className="stat-card">
@@ -231,14 +228,13 @@ export default function WalletLookupPage() {
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Active Wallets
                 </span>
-                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/70 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-brand-100/60 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 flex items-center justify-center">
                   <Users size={16} />
                 </div>
               </div>
               <p className="text-xl lg:text-2xl font-bold text-slate-900 dark:text-white">
                 {walletStats.walletsWithBalance} / {allCustomers.length}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Customers with positive balance</p>
             </div>
           </div>
 
@@ -413,9 +409,9 @@ export default function WalletLookupPage() {
               {/* Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: 'Total Purchases', value: formatCurrency(customer.total_purchases), icon: ShoppingBag, color: 'text-blue-600 dark:text-blue-400' },
+                  { label: 'Total Purchases', value: formatCurrency(customer.total_purchases), icon: ShoppingBag, color: 'text-slate-700 dark:text-slate-300' },
                   { label: 'Cashback Earned', value: formatCurrency(customer.cashback_earned), icon: Gift, color: 'text-brand-600 dark:text-brand-400' },
-                  { label: 'Cashback Used', value: formatCurrency(customer.cashback_redeemed), icon: Receipt, color: 'text-orange-600 dark:text-orange-400' },
+                  { label: 'Cashback Used', value: formatCurrency(customer.cashback_redeemed), icon: Receipt, color: 'text-slate-600 dark:text-slate-400' },
                   { label: 'Wallet Balance', value: formatCurrency(customer.cashback_balance), icon: Wallet, color: 'text-brand-700 dark:text-brand-300' },
                 ].map(({ label, value, icon: Icon, color }, i) => (
                   <div key={i} className="stat-card p-4">

@@ -602,7 +602,7 @@ export default function SettingsPage() {
                     </ul>
 
                     <p className="font-semibold text-slate-700 dark:text-slate-300 pt-2">What is strictly preserved:</p>
-                    <ul className="list-disc pl-5 text-emerald-700 dark:text-emerald-400 space-y-1">
+                    <ul className="list-disc pl-5 text-brand-700 dark:text-brand-300 space-y-1">
                       <li>Administrator credentials & login access</li>
                       <li>Shop settings & cashback rules</li>
                       <li>Service categories & POS configurations</li>

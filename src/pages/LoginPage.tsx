@@ -42,11 +42,11 @@ export default function LoginPage() {
         <div className="bg-white dark:bg-dark-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-dark-950 border border-slate-200/80 dark:border-dark-800 p-8 animate-fade-in transition-colors duration-200">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 items-center justify-center shadow-lg shadow-brand-500/25 mb-4">
+            <div className="inline-flex w-16 h-16 rounded-2xl bg-brand-600 items-center justify-center shadow-lg shadow-brand-600/30 mb-4">
               <Zap size={28} className="text-white" />
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Smart Cashback</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Shop Management Dashboard</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Administrator Sign In</p>
           </div>
 
           {/* Form */}
@@ -123,7 +123,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          Smart Cashback © {new Date().getFullYear()} ·
+          Smart Cashback © {new Date().getFullYear()}
         </p>
       </div>
     </div>

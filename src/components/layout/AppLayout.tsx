@@ -206,9 +206,9 @@ export default function AppLayout() {
           </button>
 
           <div className="hidden sm:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Cashback System Online · 2% Cashback Active
+            <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              System Online
             </span>
           </div>
 

@@ -200,10 +200,10 @@ export default function ReportsPage() {
       {hasRun && !loading && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
           {[
-            { label: 'Total Sales (Collected)', value: formatCurrency(totals.sales), className: 'text-brand-700 dark:text-brand-300' },
-            { label: 'Cashback Issued', value: formatCurrency(totals.cashbackIssued), className: 'text-emerald-600 dark:text-emerald-400' },
-            { label: 'Cashback Redeemed', value: formatCurrency(totals.cashbackRedeemed), className: 'text-orange-600 dark:text-orange-400' },
-            { label: 'Total Transactions', value: rows.length.toString(), className: 'text-blue-600 dark:text-blue-400' },
+            { label: 'Total Sales', value: formatCurrency(totals.sales), className: 'text-brand-700 dark:text-brand-300' },
+            { label: 'Cashback Issued', value: formatCurrency(totals.cashbackIssued), className: 'text-brand-600 dark:text-brand-400' },
+            { label: 'Cashback Redeemed', value: formatCurrency(totals.cashbackRedeemed), className: 'text-slate-700 dark:text-slate-300' },
+            { label: 'Transactions', value: rows.length.toString(), className: 'text-brand-800 dark:text-brand-200' },
           ].map(({ label, value, className }, i) => (
             <div key={i} className="stat-card">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</p>
