@@ -14,9 +14,9 @@ migrations_dir = "migrations"
 
 # Cloudflare R2 Bucket Binding (Private Object Storage)
 # Run: npx wrangler r2 bucket create smart-cashback-storage
-[[r2_buckets]]
-binding = "STORAGE"
-bucket_name = "smart-cashback-storage"
+# [[r2_buckets]]
+# binding = "STORAGE"
+# bucket_name = "smart-cashback-storage"
 
 # Environment Variables (Public/Non-sensitive configuration only)
 # IMPORTANT: DO NOT put sensitive secrets (JWT_SECRET, private keys, passwords) here!
