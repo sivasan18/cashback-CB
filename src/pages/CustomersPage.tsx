@@ -4,7 +4,7 @@ import {
   Search, Plus, Eye, Edit2, Trash2, X, AlertTriangle,
   User, Phone, Wallet, ShoppingBag, ShieldAlert
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -34,7 +34,7 @@ export default function CustomersPage() {
 
   const fetchCustomers = useCallback(async (q?: string) => {
     setLoading(true)
-    let query = supabase
+    let query = db
       .from('customers')
       .select('*')
       .not('name', 'eq', '[Deleted Customer]')
@@ -77,7 +77,7 @@ export default function CustomersPage() {
     }
 
     setAdding(true)
-    const { error } = await supabase.from('customers').insert({
+    const { error } = await db.from('customers').insert({
       name: newName.trim(),
       mobile: norm,
       cashback_balance: 0,
@@ -124,7 +124,7 @@ export default function CustomersPage() {
     setSavingEdit(true)
     try {
       if (norm !== editingCustomer.mobile) {
-        const { data: existing } = await supabase
+        const { data: existing } = await db
           .from('customers')
           .select('id')
           .eq('mobile', norm)
@@ -138,8 +138,8 @@ export default function CustomersPage() {
         }
       }
 
-      // Update in Supabase - keeping customer ID intact so all transaction history remains linked!
-      const { error } = await supabase
+      // Update in D1 - keeping customer ID intact so all transaction history remains linked!
+      const { error } = await db
         .from('customers')
         .update({
           name: editName.trim(),
@@ -172,8 +172,8 @@ export default function CustomersPage() {
     setDeleting(true)
 
     try {
-      // Dual-path: 1) Try secure server-side RPC delete_customer
-      const { error: rpcErr } = await supabase.rpc('delete_customer', {
+      // 1) Try secure server-side RPC delete_customer
+      const { error: rpcErr } = await db.rpc('delete_customer', {
         p_customer_id: deletingCustomer.id,
       })
 
@@ -184,23 +184,23 @@ export default function CustomersPage() {
         console.warn('RPC delete_customer unavailable, running fallback:', rpcErr.message)
 
         // Delete ledger records if any
-        await supabase
+        await db
           .from('cashback_ledger')
           .delete()
           .eq('customer_id', deletingCustomer.id)
 
         // Try direct delete from customers table
-        const { data: delRows, error: delErr } = await supabase
+        const { data: delRows, error: delErr } = await db
           .from('customers')
           .delete()
           .eq('id', deletingCustomer.id)
           .select()
 
         // If direct DELETE was blocked by Postgres RLS policy or FK constraint,
-        // perform guaranteed anonymization update allowed by auth_update_customers
+        // perform guaranteed anonymization update
         if (delErr || !delRows || delRows.length === 0) {
           const anonymizedMobile = 'DEL' + deletingCustomer.id.replace(/-/g, '').slice(0, 7)
-          let { error: anonErr } = await supabase
+          let { error: anonErr } = await db
             .from('customers')
             .update({
               name: '[Deleted Customer]',
@@ -213,9 +213,8 @@ export default function CustomersPage() {
             })
             .eq('id', deletingCustomer.id)
 
-          // If customers_mobile_check constraint blocked DEL prefix (migration 002 not yet executed in Supabase)
-          if (anonErr && anonErr.code === '23514') {
-            const res = await supabase
+          if (anonErr) {
+            const res = await db
               .from('customers')
               .update({
                 name: '[Deleted Customer]',

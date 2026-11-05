@@ -6,7 +6,7 @@ import {
   UserPlus, Plus, QrCode, Banknote, CreditCard,
   Monitor, MonitorOff, ArrowLeft, X
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { calculateCashback, formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useDisplayStore, type PaymentMethod, type PaymentVerificationStatus } from '@/store/displayStore'
@@ -72,7 +72,7 @@ export default function BillingPage() {
   const [lastSavedTxId, setLastSavedTxId] = useState<string | null>(null)
 
   useEffect(() => {
-    supabase
+    db
       .from('service_categories')
       .select('*')
       .eq('is_active', true)
@@ -97,7 +97,7 @@ export default function BillingPage() {
 
     setIsSearching(true)
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('customers')
         .select('*')
         .like('mobile', `${cleanPrefix}%`)
@@ -201,7 +201,7 @@ export default function BillingPage() {
     setMobileError('')
     setShowSuggestions(false)
 
-    const { data } = await supabase
+    const { data } = await db
       .from('customers')
       .select('*')
       .eq('mobile', norm)
@@ -224,7 +224,7 @@ export default function BillingPage() {
       return
     }
     const norm = normalizeMobile(mobile.trim())
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('customers')
       .insert({
         name: newName.trim(),
@@ -486,7 +486,7 @@ export default function BillingPage() {
       const paymentNote = `Payment: ${paymentMethod.toUpperCase()}${upiRef.trim() ? ` (UTR: ${upiRef.trim()})` : ''}`
       const combinedNotes = [notes.trim(), paymentNote].filter(Boolean).join(' | ')
 
-      const { data, error } = await supabase.rpc('process_billing', {
+      const { data, error } = await db.rpc('process_billing', {
         p_customer_id: customer.id,
         p_service_category: serviceCategory,
         p_bill_amount: summary.billAmount,
@@ -495,6 +495,8 @@ export default function BillingPage() {
         p_cashback_earned: summary.cashbackEarned,
         p_notes: combinedNotes,
         p_idempotency_key: transactionKey,
+        payment_method: paymentMethod,
+        payment_verified: paymentMethod === 'upi' ? upiVerified : true,
       })
 
       if (error) throw new Error(error.message)
@@ -533,7 +535,7 @@ export default function BillingPage() {
         },
       })
 
-      const { data: updatedCustomer } = await supabase
+      const { data: updatedCustomer } = await db
         .from('customers')
         .select('*')
         .eq('id', customer.id)

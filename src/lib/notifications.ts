@@ -29,8 +29,8 @@ const SMS_TEMPLATES: Record<NotificationEvent, (data: NotificationPayload['data'
  * IMPORTANT: SMS provider credentials must be stored server-side only.
  */
 export async function sendNotification(payload: NotificationPayload): Promise<void> {
-  // TODO: Replace with actual SMS gateway call via Supabase Edge Function
-  // Example: await supabase.functions.invoke('send-sms', { body: payload })
+  // TODO: Replace with actual SMS gateway call via Cloudflare Worker
+  // Example: await fetch('/api/notifications/send-sms', { method: 'POST', body: JSON.stringify(payload) })
 
   const template = SMS_TEMPLATES[payload.event]
   if (!template) return

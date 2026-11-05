@@ -4,7 +4,7 @@ import {
   Users, ShoppingBag, Gift, Receipt, Wallet,
   Search, ArrowRight
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { formatCurrency, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
 import { format, subDays, startOfDay, endOfDay } from 'date-fns'
@@ -36,33 +36,33 @@ export default function DashboardPage() {
     const todayEnd = endOfDay(today).toISOString()
 
     const [txRes, customersRes, todayTxRes, last7Res] = await Promise.all([
-      supabase.from('transactions').select('amount_paid, cashback_earned, cashback_redeemed, status').eq('status', 'completed'),
-      supabase.from('customers').select('id, created_at, cashback_balance').not('name', 'eq', '[Deleted Customer]').not('mobile', 'like', 'DEL%'),
-      supabase.from('transactions').select('amount_paid').eq('status', 'completed').gte('created_at', todayStart).lte('created_at', todayEnd),
-      supabase.from('transactions')
+      db.from('transactions').select('amount_paid, cashback_earned, cashback_redeemed, status').eq('status', 'completed'),
+      db.from('customers').select('id, created_at, cashback_balance').not('name', 'eq', '[Deleted Customer]').not('mobile', 'like', 'DEL%'),
+      db.from('transactions').select('amount_paid').eq('status', 'completed').gte('created_at', todayStart).lte('created_at', todayEnd),
+      db.from('transactions')
         .select('amount_paid, created_at, status')
         .eq('status', 'completed')
         .gte('created_at', subDays(today, 6).toISOString())
         .order('created_at', { ascending: true }),
     ])
 
-    const txRows = txRes.data ?? []
-    const customers = customersRes.data ?? []
-    const todayRows = todayTxRes.data ?? []
-    const last7 = last7Res.data ?? []
+    const txRows = (txRes.data as Transaction[]) ?? []
+    const customers = (customersRes.data as Customer[]) ?? []
+    const todayRows = (todayTxRes.data as Transaction[]) ?? []
+    const last7 = (last7Res.data as Transaction[]) ?? []
 
-    const todayNewCust = customers.filter(c =>
+    const todayNewCust = customers.filter((c: Customer) =>
       new Date(c.created_at) >= startOfDay(today)
     ).length
 
-    const outstanding = customers.reduce((s, c) => s + (c.cashback_balance ?? 0), 0)
+    const outstanding = customers.reduce((s: number, c: Customer) => s + (c.cashback_balance ?? 0), 0)
 
     setStats({
-      todaySales: todayRows.reduce((s, t) => s + t.amount_paid, 0),
+      todaySales: todayRows.reduce((s: number, t: Transaction) => s + t.amount_paid, 0),
       totalCustomers: customers.length,
       todayNewCustomers: todayNewCust,
-      totalCashbackIssued: txRows.reduce((s, t) => s + (t.cashback_earned ?? 0), 0),
-      totalCashbackRedeemed: txRows.reduce((s, t) => s + (t.cashback_redeemed ?? 0), 0),
+      totalCashbackIssued: txRows.reduce((s: number, t: Transaction) => s + (t.cashback_earned ?? 0), 0),
+      totalCashbackRedeemed: txRows.reduce((s: number, t: Transaction) => s + (t.cashback_redeemed ?? 0), 0),
       outstandingCashback: outstanding,
     })
 
@@ -71,14 +71,14 @@ export default function DashboardPage() {
     for (let i = 6; i >= 0; i--) {
       dayMap[format(subDays(today, i), 'dd MMM')] = 0
     }
-    last7.forEach(t => {
+    last7.forEach((t: Transaction) => {
       const day = format(new Date(t.created_at), 'dd MMM')
       dayMap[day] = (dayMap[day] ?? 0) + t.amount_paid
     })
     setDailySales({ labels: Object.keys(dayMap), data: Object.values(dayMap) })
 
     // Recent transactions
-    const { data: recentData } = await supabase
+    const { data: recentData } = await db
       .from('transactions')
       .select('*, customers(name, mobile)')
       .order('created_at', { ascending: false })

@@ -1,6 +1,16 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
-import type { Session, User } from '@supabase/supabase-js'
+import { cloudflareApi } from '@/lib/api'
+
+export interface User {
+  id: string
+  email: string
+  role?: string
+}
+
+export interface Session {
+  access_token: string
+  user?: User
+}
 
 interface AuthState {
   session: Session | null
@@ -19,30 +29,33 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialized: false,
 
   initialize: async () => {
-    const { data } = await supabase.auth.getSession()
-    set({
-      session: data.session,
-      user: data.session?.user ?? null,
-      initialized: true,
-    })
-
-    supabase.auth.onAuthStateChange((_event, session) => {
-      set({ session, user: session?.user ?? null })
-    })
+    try {
+      const { data } = await cloudflareApi.auth.getSession()
+      set({
+        session: data?.session ? { access_token: data.session.access_token, user: data.user } : null,
+        user: data?.user ?? null,
+        initialized: true,
+      })
+    } catch {
+      set({ session: null, user: null, initialized: true })
+    }
   },
 
   signIn: async (email, password) => {
     set({ loading: true })
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await cloudflareApi.auth.signInWithPassword({ email, password })
     set({ loading: false })
 
-    if (error) return { error: error.message }
-    set({ session: data.session, user: data.user })
+    if (error || !data) return { error: error?.message || 'Login failed' }
+    set({
+      session: { access_token: data.session.access_token, user: data.user },
+      user: data.user
+    })
     return { error: null }
   },
 
   signOut: async () => {
-    await supabase.auth.signOut()
+    await cloudflareApi.auth.signOut()
     set({ session: null, user: null })
   },
 }))

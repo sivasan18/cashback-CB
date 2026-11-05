@@ -4,7 +4,7 @@ import {
   AlertOctagon, AlertTriangle, ShieldCheck, Lock, CheckCircle2, X,
   QrCode, Monitor
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -63,7 +63,7 @@ export default function SettingsPage() {
   }, [settings])
 
   const fetchCategories = useCallback(async () => {
-    const { data } = await supabase.from('service_categories').select('*').order('sort_order')
+    const { data } = await db.from('service_categories').select('*').order('sort_order')
     setCategories((data as ServiceCategory[]) ?? [])
   }, [])
 
@@ -94,7 +94,7 @@ export default function SettingsPage() {
   const handleAddCategory = async () => {
     if (!newCat.trim()) return
     const sortOrder = categories.length
-    const { error } = await supabase.from('service_categories').insert({
+    const { error } = await db.from('service_categories').insert({
       name: newCat.trim(), is_active: true, sort_order: sortOrder,
     })
     if (error) {
@@ -107,13 +107,13 @@ export default function SettingsPage() {
   }
 
   const handleToggleCategory = async (cat: ServiceCategory) => {
-    await supabase.from('service_categories').update({ is_active: !cat.is_active }).eq('id', cat.id)
+    await db.from('service_categories').update({ is_active: !cat.is_active }).eq('id', cat.id)
     fetchCategories()
   }
 
   const handleDeleteCategory = async (id: string) => {
     if (!confirm('Delete this category? This will not affect existing transactions.')) return
-    await supabase.from('service_categories').delete().eq('id', id)
+    await db.from('service_categories').delete().eq('id', id)
     fetchCategories()
     toast.success('Category removed')
   }
@@ -133,7 +133,7 @@ export default function SettingsPage() {
     }
 
     setChangingPwd(true)
-    const { error } = await supabase.auth.updateUser({ password: pwdForm.newPwd })
+    const { error } = await db.auth.updateUser({ password: pwdForm.newPwd })
     setChangingPwd(false)
 
     if (error) {
@@ -171,7 +171,7 @@ export default function SettingsPage() {
     setAuthChecking(true)
     try {
       const email = user?.email || 'sivar75@gmail.com'
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await db.auth.signInWithPassword({
         email,
         password: adminPassword,
       })
@@ -195,7 +195,7 @@ export default function SettingsPage() {
     setIsDeletingAll(true)
     try {
       // 1) Try secure server-side RPC
-      const { data: rpcData, error: rpcErr } = await supabase.rpc('delete_all_customers')
+      const { data: rpcData, error: rpcErr } = await db.rpc('delete_all_customers')
 
       if (!rpcErr) {
         console.log('Bulk deletion RPC result:', rpcData)
@@ -205,19 +205,19 @@ export default function SettingsPage() {
         console.warn('RPC not present, executing client fallback:', rpcErr.message)
 
         // Delete all ledger records
-        await supabase.from('cashback_ledger').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+        await db.from('cashback_ledger').delete().neq('id', '00000000-0000-0000-0000-000000000000')
 
         // Get customers with transactions
-        const { data: txs } = await supabase.from('transactions').select('customer_id')
-        const referencedCustIds = new Set((txs || []).map(t => t.customer_id))
+        const { data: txs } = await db.from('transactions').select('customer_id')
+        const referencedCustIds = new Set((txs || []).map((t: any) => t.customer_id))
 
         // Fetch all customers
-        const { data: allCusts } = await supabase.from('customers').select('id')
+        const { data: allCusts } = await db.from('customers').select('id')
 
-        for (const c of (allCusts || [])) {
+        for (const c of ((allCusts as any[]) || [])) {
           let deleted = false
           if (!referencedCustIds.has(c.id)) {
-            const { data: delData } = await supabase.from('customers').delete().eq('id', c.id).select()
+            const { data: delData } = await db.from('customers').delete().eq('id', c.id).select()
             if (delData && delData.length > 0) {
               deleted = true
             }
@@ -226,7 +226,7 @@ export default function SettingsPage() {
           if (!deleted) {
             // Anonymize personal info and zero out wallet
             const anonymizedMobile = 'DEL' + c.id.replace(/-/g, '').slice(0, 7)
-            const { error: anonErr } = await supabase.from('customers').update({
+            const { error: anonErr } = await db.from('customers').update({
               name: '[Deleted Customer]',
               mobile: anonymizedMobile,
               cashback_balance: 0,
@@ -236,8 +236,8 @@ export default function SettingsPage() {
               updated_at: new Date().toISOString(),
             }).eq('id', c.id)
 
-            if (anonErr && anonErr.code === '23514') {
-              await supabase.from('customers').update({
+            if (anonErr) {
+              await db.from('customers').update({
                 name: '[Deleted Customer]',
                 cashback_balance: 0,
                 cashback_earned: 0,

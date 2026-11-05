@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Receipt, Wallet, Gift, ShoppingBag, XCircle } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { formatCurrency } from '@/lib/cashback'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -20,9 +20,9 @@ export default function CustomerDetailPage() {
     if (!id) return
     setLoading(true)
     const [custRes, txRes, ledgerRes] = await Promise.all([
-      supabase.from('customers').select('*').eq('id', id).single(),
-      supabase.from('transactions').select('*').eq('customer_id', id).order('created_at', { ascending: false }),
-      supabase.from('cashback_ledger').select('*').eq('customer_id', id).order('created_at', { ascending: false }),
+      db.from('customers').select('*').eq('id', id).single(),
+      db.from('transactions').select('*').eq('customer_id', id).order('created_at', { ascending: false }),
+      db.from('cashback_ledger').select('*').eq('customer_id', id).order('created_at', { ascending: false }),
     ])
     setCustomer(custRes.data as Customer)
     setTransactions((txRes.data as Transaction[]) ?? [])
@@ -38,7 +38,7 @@ export default function CustomerDetailPage() {
     if (tx.status !== 'completed') return
     if (!confirm('Cancel this transaction? A reversal entry will be created.')) return
 
-    const { error } = await supabase.rpc('cancel_transaction', { p_transaction_id: tx.id })
+    const { error } = await db.rpc('cancel_transaction', { p_transaction_id: tx.id })
     if (error) {
       toast.error('Failed to cancel: ' + error.message)
       return

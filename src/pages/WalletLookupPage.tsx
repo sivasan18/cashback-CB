@@ -4,7 +4,7 @@ import {
   Search, Wallet, Receipt, Gift, ShoppingBag,
   Users, ChevronRight
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { format } from 'date-fns'
 import type { Customer, Transaction } from '@/types'
@@ -48,7 +48,7 @@ export default function WalletLookupPage() {
   // ─────────────────────────────────────────────────────────────
   const fetchOverview = useCallback(async () => {
     setLoadingOverview(true)
-    const { data } = await supabase
+    const { data } = await db
       .from('customers')
       .select('*')
       .not('name', 'eq', '[Deleted Customer]')
@@ -89,7 +89,7 @@ export default function WalletLookupPage() {
     setLoadingLookup(true)
     setSearched(true)
 
-    const { data: cust } = await supabase
+    const { data: cust } = await db
       .from('customers')
       .select('*')
       .eq('mobile', m)
@@ -98,7 +98,7 @@ export default function WalletLookupPage() {
     setCustomer(cust as Customer | null)
 
     if (cust) {
-      const { data: txs } = await supabase
+      const { data: txs } = await db
         .from('transactions')
         .select('*')
         .eq('customer_id', cust.id)

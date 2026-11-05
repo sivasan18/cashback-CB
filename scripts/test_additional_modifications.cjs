@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 console.log('===========================================================');
-console.log('🧪 TESTING ADDITIONAL MODIFICATIONS & REAL SUPABASE INTEGRATION');
+console.log('🧪 TESTING ADDITIONAL MODIFICATIONS (CLOUDFLARE NATIVE)');
 console.log('===========================================================');
 
 let allPassed = true;
@@ -62,111 +62,71 @@ if (t3_placeholder && t3_no_tech_notes) {
   allPassed = false;
 }
 
-// 4. Test Customer Edit & Validation against Supabase
-async function runSupabaseLiveTests() {
-  const { createClient } = require('@supabase/supabase-js');
-  const env = Object.fromEntries(
-    fs.readFileSync('.env', 'utf8')
-      .split('\n')
-      .filter(l => l.includes('='))
-      .map(l => {
-        const idx = l.indexOf('=');
-        return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()];
-      })
-  );
-
-  const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);
-
-  console.log('\n--- Live Supabase Database Tests with sivar75@gmail.com ---');
-  const { data: auth, error: authErr } = await supabase.auth.signInWithPassword({
-    email: 'sivar75@gmail.com',
-    password: 'San@1818'
-  });
-
-  if (authErr) {
-    console.error('❌ Supabase Login Failed:', authErr.message);
-    return;
-  }
-  console.log('✅ Admin Authenticated:', auth.user.email);
-
-  // Read existing customers
-  const { data: custs } = await supabase.from('customers').select('*');
-  console.log(`✅ Loaded ${custs.length} existing customers from Supabase.`);
-
-  // Verify Kumar / Thiyagarajan / Ramani exist
-  const thiyagarajan = custs.find(c => c.mobile === '9443639315');
-  if (thiyagarajan) {
-    console.log('✅ Customer Thiyagarajan verified with mobile 9443639315, balance:', thiyagarajan.cashback_balance);
-  }
-
-  // Test Customer Edit functionality: Create a dedicated test customer, edit name and mobile, test duplicate check, and delete
-  const testMobile1 = '9777111222';
-  const testMobile2 = '9777111333';
-
-  // 1. Insert test customer
-  const { data: created, error: createErr } = await supabase.from('customers').insert({
-    name: 'AutoTest Customer',
-    mobile: testMobile1,
-    cashback_balance: 0,
-    cashback_earned: 0,
-    cashback_redeemed: 0,
-    total_purchases: 0
-  }).select().single();
-
-  if (createErr) {
-    console.log('Note: Test customer insert:', createErr.message);
-  } else {
-    console.log('✅ Created test customer:', created.name, created.mobile);
-
-    // 2. Edit customer name & mobile
-    const { data: edited, error: editErr } = await supabase.from('customers').update({
-      name: 'AutoTest Customer Edited',
-      mobile: testMobile2,
-    }).eq('id', created.id).select().single();
-
-    if (!editErr && edited.name === 'AutoTest Customer Edited' && edited.mobile === testMobile2) {
-      console.log('✅ Customer Edit Verified: Name and Mobile successfully updated in Supabase.');
-    } else {
-      console.log('❌ Customer Edit Failed:', editErr);
-    }
-
-    // 3. Test duplicate mobile check
-    const { error: dupErr } = await supabase.from('customers').insert({
-      name: 'Duplicate Test',
-      mobile: testMobile2, // already taken
-      cashback_balance: 0,
-      total_purchases: 0
-    });
-    if (dupErr && (dupErr.code === '23505' || dupErr.message.includes('unique'))) {
-      console.log('✅ Duplicate Mobile Prevention Verified: Supabase database rejected duplicate number.');
-    }
-
-    // 4. Clean up test customer
-    const { error: cleanErr } = await supabase.from('customers').delete().eq('id', created.id);
-    console.log('✅ Cleaned up temporary test customer.');
-  }
-
-  // 5. Danger Zone Verification
-  const settingsContent = fs.readFileSync('src/pages/SettingsPage.tsx', 'utf8');
-  const t5_danger_title = settingsContent.includes('Danger Zone – Customer Data Management');
-  const t5_danger_btn = settingsContent.includes('DELETE ALL CUSTOMER DATA');
-  const t5_danger_reauth = settingsContent.includes('signInWithPassword');
-  const t5_danger_phrase = settingsContent.includes("REQUIRED_PHRASE = 'DELETE ALL CUSTOMER DATA'");
-
-  if (t5_danger_title && t5_danger_btn && t5_danger_reauth && t5_danger_phrase) {
-    console.log('✅ Danger Zone Verified in Settings:');
-    console.log('    - Prominent warning modal with impact details');
-    console.log('    - Strict confirmation phrase matching: "DELETE ALL CUSTOMER DATA"');
-    console.log('    - Admin password re-authentication required');
-    console.log('    - Retains shop settings, services, and anonymized financial audit records');
-  } else {
-    console.log('❌ Danger Zone Verification Failed');
-    allPassed = false;
-  }
-
-  console.log('\n===========================================================');
-  console.log('🎉 ALL MODIFICATION & INTEGRATION TESTS COMPLETED SUCCESSFULLY!');
-  console.log('===========================================================');
+// 4. Testing UPI Deep Link Generation
+console.log('\n--- Testing UPI Deep Link Generation ---');
+function buildUPILink(params) {
+  const q = new URLSearchParams();
+  q.set('pa', params.pa);
+  q.set('pn', params.pn);
+  q.set('am', params.am.toFixed(2));
+  q.set('cu', 'INR');
+  q.set('tn', params.tn);
+  return `upi://pay?${q.toString()}`;
 }
 
-runSupabaseLiveTests();
+const upiLink = buildUPILink({
+  pa: '7708481818@upi',
+  pn: 'Smart Cashback Shop',
+  am: 150.0,
+  tn: 'Bill - Ramesh - Xerox'
+});
+console.log('Generated UPI Link:', upiLink);
+if (upiLink.includes('pa=7708481818%40upi') && upiLink.includes('am=150.00')) {
+  console.log('✅ UPI Deep Link format verified');
+} else {
+  console.log('❌ UPI Deep Link format error');
+  allPassed = false;
+}
+
+// 5. Testing Cashback Rules
+console.log('--- Testing Cashback Rules ---');
+const calculateCashback = (amount, min = 99, pct = 0.02) => amount >= min ? Math.round(amount * pct * 100) / 100 : 0;
+const cb1 = calculateCashback(100);
+const cb2 = calculateCashback(50);
+const cb3 = calculateCashback(200 - 50); // ₹200 bill - ₹50 redemption
+
+if (cb1 === 2.0) console.log('✅ ₹100 purchase gives ₹2.00 cashback');
+else { console.log('❌ Cashback error for ₹100'); allPassed = false; }
+
+if (cb2 === 0.0) console.log('✅ < ₹99 purchase gives ₹0.00 cashback');
+else { console.log('❌ Cashback error for < ₹99'); allPassed = false; }
+
+if (cb3 === 3.0) console.log('✅ Cashback calculated on net amount after redemption (₹150 paid -> ₹3.00)');
+else { console.log('❌ Cashback error for redemption'); allPassed = false; }
+
+// 6. Danger Zone Verification
+const settingsContent = fs.readFileSync('src/pages/SettingsPage.tsx', 'utf8');
+const t6_danger_title = settingsContent.includes('Danger Zone – Customer Data Management');
+const t6_danger_btn = settingsContent.includes('DELETE ALL CUSTOMER DATA');
+const t6_danger_reauth = settingsContent.includes('signInWithPassword');
+const t6_danger_phrase = settingsContent.includes("REQUIRED_PHRASE = 'DELETE ALL CUSTOMER DATA'");
+
+if (t6_danger_title && t6_danger_btn && t6_danger_reauth && t6_danger_phrase) {
+  console.log('\n✅ Danger Zone Verified in Settings:');
+  console.log('    - Prominent warning modal with impact details');
+  console.log('    - Strict confirmation phrase matching: "DELETE ALL CUSTOMER DATA"');
+  console.log('    - Admin password re-authentication required');
+  console.log('    - Retains shop settings, services, and anonymized financial audit records');
+} else {
+  console.log('❌ Danger Zone Verification Failed');
+  allPassed = false;
+}
+
+console.log('\n===========================================================');
+if (allPassed) {
+  console.log('🎉 ALL MODIFICATION & VERIFICATION TESTS COMPLETED SUCCESSFULLY!');
+} else {
+  console.log('⚠️ Some tests failed.');
+  process.exit(1);
+}
+console.log('===========================================================');

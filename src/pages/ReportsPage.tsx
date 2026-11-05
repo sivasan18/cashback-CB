@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Download, BarChart3, Filter } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import { formatCurrency } from '@/lib/cashback'
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -45,7 +45,7 @@ export default function ReportsPage() {
     setHasRun(true)
     const [from, to] = getDateRange()
 
-    let query = supabase
+    let query = db
       .from('transactions')
       .select('*, customers(name, mobile)')
       .gte('created_at', from)

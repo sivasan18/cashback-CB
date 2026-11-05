@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "d1:seed": "node scripts/generate_d1_seed.cjs",
+    "verify:d1": "node scripts/verify_d1_migration.cjs",
+    "test:cf": "node scripts/test_cloudflare_worker_api.cjs",
+    "test:all": "node scripts/test_requirements.cjs && node scripts/test_additional_modifications.cjs && node scripts/test_upi_and_display.cjs && node scripts/test_customer_display_reset_cases.cjs && node scripts/test_dual_display_and_upi_system.cjs && node scripts/test_cloudflare_worker_api.cjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.47.0",
     "chart.js": "^4.4.6",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.460.0",

@@ -1,248 +1,140 @@
-# Smart Cashback – Xerox & Recharge Shop Management
+# Smart Cashback – Cloudflare-Native Project
 
-A complete, production-ready cashback loyalty management system for small Xerox, printing, and mobile recharge shops.
+A production-ready cashback loyalty management system for small Xerox, printing, and mobile recharge shops, built entirely on the **Cloudflare Ecosystem** (**Cloudflare Pages**, **Cloudflare Workers**, **Cloudflare D1**, and **Cloudflare R2**).
+
+---
+
+## Architecture Overview
+
+| Category | Platform / Technology |
+|---|---|
+| **Source Control** | GitHub (New independent repository) |
+| **Frontend Hosting** | Cloudflare Pages |
+| **Frontend Framework** | React 18, Vite 6, TypeScript, Tailwind CSS |
+| **Backend & APIs** | Cloudflare Workers / Pages Functions (`/functions/api/*`) |
+| **Database** | Cloudflare D1 (SQLite) with atomic transactions |
+| **File Storage** | Cloudflare R2 (Private object storage for backups) |
+| **Authentication** | Web Crypto PBKDF2-SHA256 (100k iterations) + HMAC-SHA256 JWT |
+| **Routing** | Single Page Application (SPA) with Cloudflare `_redirects` |
+| **Security** | Cloudflare Security Headers, Rate Limiting, WAF |
+
+---
 
 ## Features
 
-- 🟢 **Customer Loyalty Wallet** — Every customer identified by mobile number earns 2% cashback
-- 🧾 **POS Billing** — 5-step billing flow with instant cashback calculation
-- 📊 **Dashboard** — Real-time stats, sales charts, and recent transactions
-- 👥 **Customer Management** — Search, register, edit, view complete history
-- 🔍 **Wallet Lookup** — Quick balance check by mobile number
-- 📈 **Reports** — Daily, weekly, monthly, custom-range, CSV export
-- ⚙️ **Settings** — Shop info, cashback %, service categories, password change
-- 🔒 **Secure Auth** — Supabase Auth + Row Level Security
-- 🛡️ **Server-side Transactions** — All billing runs via secure PostgreSQL function
+- 🧾 **Default Landing Page**: Administrator login redirects directly to **New Bill** (`/billing`).
+- 🟢 **2% Cashback Loyalty**: Authoritative server-side calculation for purchases $\ge$ ₹99 on net amount paid.
+- 💰 **Auto Maximum Redemption**: Automatically applies maximum eligible wallet balance to reduce bill, with instant manual adjustment.
+- 📱 **Strict Mobile Prefix Search**: Searches mobile numbers matching exclusively from the beginning (`LIKE 'prefix%'`), ignoring middle or end matches.
+- 🖥️ **Dual Screen Customer Display**: Cross-tab/window customer synchronization on second monitor (`/customer-display`) accessible without admin credentials.
+- 💳 **Dynamic UPI QR Code**: Real-time generation of UPI payment links with merchant VPA and net payable amount.
+- 🛡️ **Payment Verification Safety**: Transactions and cashback are never credited for unverified, cancelled, or expired UPI payments.
+- 🔒 **Server-Side Transaction Integrity**: Idempotency keys prevent duplicate bill submissions; cancellations generate reversal entries.
+- 👤 **Audit-Compliant Soft Deletion**: Deleting customers with purchases anonymizes personal data (`[Deleted Customer]`, `DEL...`) while retaining financial audit records.
+- 🎨 **Raspberry & Pale Sky Theme**: Supports Light, Dark, and System preference with persistence.
 
 ---
 
-## Tech Stack
+## Local Development & Setup
 
-| Layer        | Technology                          |
-|--------------|-------------------------------------|
-| Frontend     | React 18 + TypeScript 5 + Vite 6    |
-| Styling      | Tailwind CSS 3                      |
-| State        | Zustand 5                           |
-| Database     | Supabase (PostgreSQL)               |
-| Auth         | Supabase Auth                       |
-| Charts       | Chart.js + react-chartjs-2          |
-| Routing      | React Router v6                     |
-| Toasts       | react-hot-toast                     |
-| Export       | XLSX / CSV                          |
-| Deployment   | Vercel                              |
+### 1. Prerequisites
+- Node.js v18 or higher
+- npm v9 or higher
+- Cloudflare Wrangler CLI (`npm install -g wrangler` or via `npx wrangler`)
 
----
-
-## Prerequisites
-
-- Node.js v18+
-- npm v9+
-- Supabase account (free tier works)
-
----
-
-## Setup Instructions
-
-### 1. Clone the repository
-
-```bash
-git clone <your-repo-url>
-cd cashback-website
-```
-
-### 2. Install dependencies
-
+### 2. Install Dependencies
 ```bash
 npm install
 ```
 
-### 3. Create a Supabase project
-
-1. Go to [supabase.com](https://supabase.com) and sign in
-2. Click **New project**
-3. Choose a name, region, and database password
-4. Wait for the project to initialize (~1 minute)
-
-### 4. Run the database schema
-
-1. In your Supabase dashboard, go to **SQL Editor**
-2. Click **New query**
-3. Paste the entire contents of `supabase/migrations/001_initial_schema.sql`
-4. Click **Run** (or press Ctrl/Cmd + Enter)
-
-This creates all tables, indexes, RLS policies, and secure RPC functions.
-
-### 5. Create your admin account
-
-In Supabase dashboard:
-1. Go to **Authentication → Users**
-2. Click **Add user → Create new user**
-3. Enter your email and a strong password
-4. Click **Create user**
-
-### 6. Configure environment variables
-
+### 3. Environment Configuration
+Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
+*(In production, Cloudflare Pages and Workers automatically handle routing and bindings)*
 
-Edit `.env`:
-
-```env
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-Find these values in Supabase: **Settings → API → Project URL & anon key**
-
-### 7. Start the development server
-
+### 4. Build the Frontend
 ```bash
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) and sign in with your admin credentials.
-
----
-
-## Cashback Business Rules
-
-| Rule | Value |
-|------|-------|
-| Minimum eligible purchase | ₹99 (configurable) |
-| Cashback rate | 2% (configurable) |
-| Cashback base | Amount paid after redemption |
-| Maximum redemption | Lesser of wallet balance or bill amount |
-| Cashback on cashback | ❌ No — only on actual cash paid |
-
-### Formula
-
-```
-If bill_amount >= minimum_eligible_purchase:
-  cashback_earned = (bill_amount - cashback_redeemed) × (rate / 100)
-Else:
-  cashback_earned = ₹0
-```
-
-### Example
-
-| Purchase | Redeemed | Amount Paid | Cashback Earned |
-|----------|----------|-------------|-----------------|
-| ₹500     | ₹10      | ₹490        | ₹9.80           |
-| ₹99      | ₹0       | ₹99         | ₹1.98           |
-| ₹50      | ₹0       | ₹50         | ₹0.00 (below threshold) |
-
----
-
-## Database Schema
-
-```
-customers           — mobile (unique), name, cashback_balance, totals
-transactions        — billing records, idempotency_key (prevents duplicates)
-cashback_ledger     — immutable credit/debit history
-service_categories  — configurable service list
-shop_settings       — cashback %, min purchase, shop info
-```
-
-All financial operations go through `process_billing()` PostgreSQL function (SECURITY DEFINER) — the frontend **cannot** directly modify wallet balances or ledger entries.
-
----
-
-## Security Architecture
-
-- **RLS on all tables** — only authenticated users can access data
-- **SECURITY DEFINER RPCs** — billing runs as database owner, not the user
-- **Idempotency keys** — prevents double-billing on network retry
-- **Row locking** — `SELECT ... FOR UPDATE` prevents concurrent double-spending
-- **Server-side validation** — all business rules enforced in SQL, not just frontend
-- **No secrets in frontend** — only anon key (public) is exposed; service role key never used client-side
-
----
-
-## Deployment (Vercel)
-
-```bash
-# Build
 npm run build
-
-# Vercel CLI deployment
-npx vercel --prod
 ```
 
-In Vercel project settings → Environment Variables, add:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+### 5. Run Automated Tests
+```bash
+# Run all verification suites
+npm run test:all
 
----
-
-## Future: SMS Integration
-
-The notification module in `src/lib/notifications.ts` is a ready stub. To enable SMS:
-
-1. Choose an SMS provider (e.g., Twilio, MSG91, Fast2SMS)
-2. Create a Supabase Edge Function: `supabase/functions/send-sms/index.ts`
-3. Store API credentials as Supabase secrets (never in frontend)
-4. Replace the stub call in `src/lib/notifications.ts`
-
-```typescript
-// Replace this line in notifications.ts:
-await supabase.functions.invoke('send-sms', { body: payload })
+# Run Cloudflare Workers & D1 E2E tests
+npm run test:cf
 ```
 
 ---
 
-## Test Scenarios
+## Cloudflare Provisioning & Deployment Guide
 
-| Test | Input | Expected |
-|------|-------|----------|
-| Below threshold | ₹50 | Cashback: ₹0.00 |
-| At threshold | ₹99 | Cashback: ₹1.98 |
-| Round amount | ₹100 | Cashback: ₹2.00 |
-| Large amount | ₹500 | Cashback: ₹10.00 |
-| With redemption | ₹200, redeem ₹10 | Paid: ₹190, Cashback: ₹3.80 |
-| Exceed balance | Redeem ₹50, balance ₹10 | ❌ Rejected |
-| Duplicate mobile | Same number | Existing customer found, no duplicate |
-| Concurrent billing | Same wallet, two requests | Row lock prevents double-spend |
-| Cancel transaction | Completed tx | Ledger reversal created, history preserved |
+Follow these exact steps to deploy to your Cloudflare account:
+
+### Step 1: Log in to Cloudflare CLI
+```bash
+npx wrangler login
+```
+
+### Step 2: Create Cloudflare D1 Database
+```bash
+npx wrangler d1 create smart-cashback-db
+```
+*Take note of the `database_id` output by Wrangler.*
+
+### Step 3: Update `wrangler.toml`
+Open `wrangler.toml` and replace `PASTE_YOUR_D1_DATABASE_ID_HERE` with your actual `database_id`:
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "smart-cashback-db"
+database_id = "your-actual-database-id-here"
+migrations_dir = "migrations"
+```
+
+### Step 4: Create Cloudflare R2 Storage Bucket
+```bash
+npx wrangler r2 bucket create smart-cashback-storage
+```
+
+### Step 5: Configure Production Worker Secret
+Set the secret key used for signing JWT authentication tokens:
+```bash
+npx wrangler secret put JWT_SECRET
+```
+*(When prompted, enter a secure 32+ character random secret string)*
+
+### Step 6: Apply Database Migrations to Cloudflare D1
+Execute the versioned migrations on your remote D1 database:
+```bash
+npx wrangler d1 migrations apply smart-cashback-db --remote
+```
+*(This creates all tables, foreign keys, indexes, default shop settings, service categories, and the initial administrator account)*
+
+### Step 7: Deploy via Cloudflare Pages
+1. Push this project to your **new GitHub repository**:
+   ```bash
+   git remote add origin https://github.com/<your-username>/<your-new-repo>.git
+   git branch -M main
+   git push -u origin main
+   ```
+2. In the **Cloudflare Dashboard**:
+   - Go to **Workers & Pages** &rarr; **Create application** &rarr; **Pages** &rarr; **Connect to Git**.
+   - Select your new repository.
+   - Build command: `npm run build`
+   - Build output directory: `dist`
+3. In your Cloudflare Pages project **Settings** &rarr; **Functions**:
+   - Under **D1 Database Bindings**: Add binding named `DB` linked to `smart-cashback-db`.
+   - Under **R2 Bucket Bindings**: Add binding named `STORAGE` linked to `smart-cashback-storage`.
+   - Under **Environment Variables**: Add `JWT_SECRET` (as an encrypted variable matching your Worker secret).
 
 ---
 
-## Project Structure
+## Administrator Credentials
 
-```
-src/
-├── components/
-│   └── layout/
-│       └── AppLayout.tsx       # Sidebar + main layout
-├── lib/
-│   ├── supabase.ts             # Supabase client
-│   ├── cashback.ts             # Calculation utilities
-│   └── notifications.ts        # SMS stub
-├── pages/
-│   ├── LoginPage.tsx
-│   ├── DashboardPage.tsx
-│   ├── BillingPage.tsx
-│   ├── CustomersPage.tsx
-│   ├── CustomerDetailPage.tsx
-│   ├── WalletLookupPage.tsx
-│   ├── ReportsPage.tsx
-│   └── SettingsPage.tsx
-├── store/
-│   ├── authStore.ts            # Zustand auth state
-│   └── settingsStore.ts        # Zustand settings state
-├── types/
-│   └── index.ts                # TypeScript types
-├── App.tsx                     # Router + protected routes
-├── main.tsx                    # Entry point
-└── index.css                   # Global styles
-
-supabase/
-└── migrations/
-    └── 001_initial_schema.sql  # Complete DB schema
-```
-
----
-
-## License
-
-MIT © 2024 Smart Cashback
+- **Initial Email**: `sivar75@gmail.com`
+- **Initial Password**: Configured in seed migration `0003_seed_admin.sql`
+- **Password Updates**: Administrators can securely change passwords anytime via **Settings** &rarr; **Change Password**.

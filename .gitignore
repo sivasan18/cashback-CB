@@ -36,3 +36,9 @@ yarn-error.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Cloudflare & D1
+.wrangler/
+*.sqlite
+*.sqlite3
+*.db

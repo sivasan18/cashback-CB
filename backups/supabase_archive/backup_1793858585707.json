@@ -1,0 +1,397 @@
+{
+  "timestamp": "2026-11-05T06:03:05.706Z",
+  "supabaseUrl": "https://lpmdrmkjzbausqkakbge.supabase.co",
+  "counts": {
+    "customers": 6,
+    "transactions": 8,
+    "cashback_ledger": 13,
+    "shop_settings": 1,
+    "service_categories": 8
+  },
+  "customers": [
+    {
+      "id": "c6e24e12-0b4a-411c-a345-8ee808986f1f",
+      "name": "AutoTest Customer Edited",
+      "mobile": "9777111333",
+      "total_purchases": 0,
+      "cashback_earned": 0,
+      "cashback_redeemed": 0,
+      "cashback_balance": 0,
+      "created_at": "2026-11-05T02:56:52.233162+00:00",
+      "updated_at": "2026-11-05T02:56:52.626684+00:00"
+    },
+    {
+      "id": "66f8d0a1-55bc-478d-9e15-f5cb7723f5d7",
+      "name": "[Deleted Customer]",
+      "mobile": "7395868689",
+      "total_purchases": 0,
+      "cashback_earned": 0,
+      "cashback_redeemed": 0,
+      "cashback_balance": 0,
+      "created_at": "2026-10-31T05:48:14.155419+00:00",
+      "updated_at": "2026-10-31T08:52:57.665528+00:00"
+    },
+    {
+      "id": "fba687cb-2210-4c82-a7c6-6b6af305d1fe",
+      "name": "[Deleted Customer]",
+      "mobile": "8525058068",
+      "total_purchases": 0,
+      "cashback_earned": 0,
+      "cashback_redeemed": 0,
+      "cashback_balance": 0,
+      "created_at": "2026-10-31T05:47:27.967559+00:00",
+      "updated_at": "2026-10-31T08:52:42.410509+00:00"
+    },
+    {
+      "id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "name": "[Deleted Customer]",
+      "mobile": "9443639315",
+      "total_purchases": 0,
+      "cashback_earned": 0,
+      "cashback_redeemed": 0,
+      "cashback_balance": 0,
+      "created_at": "2026-10-31T05:16:49.351367+00:00",
+      "updated_at": "2026-10-31T08:53:04.759166+00:00"
+    },
+    {
+      "id": "05669c25-e79c-4709-85f7-be0204cec815",
+      "name": "geetha",
+      "mobile": "9943141695",
+      "total_purchases": 456,
+      "cashback_earned": 9.12,
+      "cashback_redeemed": 0,
+      "cashback_balance": 9.12,
+      "created_at": "2026-10-31T05:16:29.295888+00:00",
+      "updated_at": "2026-10-31T05:22:47.306479+00:00"
+    },
+    {
+      "id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "name": "Ramani",
+      "mobile": "9025020560",
+      "total_purchases": 1386.81,
+      "cashback_earned": 27.74,
+      "cashback_redeemed": 23.19,
+      "cashback_balance": 4.55,
+      "created_at": "2026-10-31T05:16:14.55538+00:00",
+      "updated_at": "2026-11-04T08:01:14.763372+00:00"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "54bef3f9-c84c-4dc0-b35b-db7edb968082",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "service_category": "Xerox / Photocopy",
+      "bill_amount": 234,
+      "cashback_redeemed": 6.73,
+      "amount_paid": 227.27,
+      "cashback_earned": 4.55,
+      "status": "completed",
+      "notes": "Payment: UPI",
+      "idempotency_key": "tx_1793779274066_04892236-bf10-4537-a0ef-c2055cc99191",
+      "created_at": "2026-11-04T08:01:14.763372+00:00",
+      "updated_at": "2026-11-04T08:01:14.763372+00:00"
+    },
+    {
+      "id": "66f5d132-43da-42af-bed3-bbb3b42fca67",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "service_category": "Xerox / Photocopy",
+      "bill_amount": 343,
+      "cashback_redeemed": 6.46,
+      "amount_paid": 336.54,
+      "cashback_earned": 6.73,
+      "status": "completed",
+      "notes": null,
+      "idempotency_key": "tx_1793436815268_2d39679f-ecdb-4456-abe0-5977d3b03343",
+      "created_at": "2026-10-31T08:53:35.465747+00:00",
+      "updated_at": "2026-10-31T08:53:35.465747+00:00"
+    },
+    {
+      "id": "bf22b3f6-c937-4137-95f3-494724cb0714",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "service_category": "Colour Printing",
+      "bill_amount": 333,
+      "cashback_redeemed": 10,
+      "amount_paid": 323,
+      "cashback_earned": 6.46,
+      "status": "completed",
+      "notes": null,
+      "idempotency_key": "tx_1793436204565_63869613-7d93-40dd-a8f8-01952caa7df8",
+      "created_at": "2026-10-31T08:43:25.003082+00:00",
+      "updated_at": "2026-10-31T08:43:25.003082+00:00"
+    },
+    {
+      "id": "f05b843d-b36a-45de-b906-0708ce5150a2",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "service_category": "Xerox / Photocopy",
+      "bill_amount": 444,
+      "cashback_redeemed": 8.78,
+      "amount_paid": 435.22,
+      "cashback_earned": 8.7,
+      "status": "completed",
+      "notes": null,
+      "idempotency_key": "tx_1793433462053_787e1f67-6a58-43c2-ae86-260fcebe7027",
+      "created_at": "2026-10-31T07:57:42.240464+00:00",
+      "updated_at": "2026-10-31T07:57:42.240464+00:00"
+    },
+    {
+      "id": "df7a2267-6b94-49f0-bb9b-c92d8b31bcde",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "service_category": "Black & White Printing",
+      "bill_amount": 444,
+      "cashback_redeemed": 5.18,
+      "amount_paid": 438.82,
+      "cashback_earned": 8.78,
+      "status": "completed",
+      "notes": null,
+      "idempotency_key": "tx_1793426398613_d1cdeb80-d6f5-4e8a-953f-225b22bf5981",
+      "created_at": "2026-10-31T05:59:59.099247+00:00",
+      "updated_at": "2026-10-31T05:59:59.099247+00:00"
+    },
+    {
+      "id": "edd58fb7-404b-4cdc-ad65-e35ce5c8c5b2",
+      "customer_id": "05669c25-e79c-4709-85f7-be0204cec815",
+      "service_category": "Xerox / Photocopy",
+      "bill_amount": 456,
+      "cashback_redeemed": 0,
+      "amount_paid": 456,
+      "cashback_earned": 9.12,
+      "status": "completed",
+      "notes": null,
+      "idempotency_key": "268b0af1-c93c-40bf-912f-bfde3aea8e26",
+      "created_at": "2026-10-31T05:22:47.306479+00:00",
+      "updated_at": "2026-10-31T05:22:47.306479+00:00"
+    },
+    {
+      "id": "c19f6f70-5f56-4250-ba13-a08480dd4966",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "service_category": "Colour Printing",
+      "bill_amount": 500,
+      "cashback_redeemed": 0,
+      "amount_paid": 500,
+      "cashback_earned": 10,
+      "status": "completed",
+      "notes": "books",
+      "idempotency_key": "91b10a29-5e62-419a-af52-caf8dc6c558a",
+      "created_at": "2026-10-31T05:20:04.317932+00:00",
+      "updated_at": "2026-10-31T05:20:04.317932+00:00"
+    },
+    {
+      "id": "19f58ccd-7555-4e78-940b-e27f6148d2e5",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "service_category": "Colour Printing",
+      "bill_amount": 259,
+      "cashback_redeemed": 0,
+      "amount_paid": 259,
+      "cashback_earned": 5.18,
+      "status": "completed",
+      "notes": "xerox",
+      "idempotency_key": "1f8726ea-c6ef-4800-b9dd-506bc8b6a8ba",
+      "created_at": "2026-10-31T05:18:02.151667+00:00",
+      "updated_at": "2026-10-31T05:18:02.151667+00:00"
+    }
+  ],
+  "cashback_ledger": [
+    {
+      "id": "b565b23a-80b1-4b00-9f2c-6d6f8c9a00c6",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "54bef3f9-c84c-4dc0-b35b-db7edb968082",
+      "credit": 0,
+      "debit": 6.73,
+      "balance_after": 0,
+      "description": "Cashback redeemed on Xerox / Photocopy",
+      "created_at": "2026-11-04T08:01:14.763372+00:00"
+    },
+    {
+      "id": "f6323049-6e87-4700-a5a8-5743de39f1ca",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "54bef3f9-c84c-4dc0-b35b-db7edb968082",
+      "credit": 4.55,
+      "debit": 0,
+      "balance_after": 4.55,
+      "description": "Cashback earned on Xerox / Photocopy (₹227.27 paid)",
+      "created_at": "2026-11-04T08:01:14.763372+00:00"
+    },
+    {
+      "id": "4ce5e9c6-7d8b-4045-9386-e5a8a473fde3",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "66f5d132-43da-42af-bed3-bbb3b42fca67",
+      "credit": 6.73,
+      "debit": 0,
+      "balance_after": 6.73,
+      "description": "Cashback earned on Xerox / Photocopy (₹336.54 paid)",
+      "created_at": "2026-10-31T08:53:35.465747+00:00"
+    },
+    {
+      "id": "2b232ebc-4f9a-4111-85a5-6e3c0d1eca40",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "66f5d132-43da-42af-bed3-bbb3b42fca67",
+      "credit": 0,
+      "debit": 6.46,
+      "balance_after": 0,
+      "description": "Cashback redeemed on Xerox / Photocopy",
+      "created_at": "2026-10-31T08:53:35.465747+00:00"
+    },
+    {
+      "id": "d59971b6-d5cc-4f68-b916-43650a040986",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "bf22b3f6-c937-4137-95f3-494724cb0714",
+      "credit": 6.46,
+      "debit": 0,
+      "balance_after": 6.46,
+      "description": "Cashback earned on Colour Printing (₹323 paid)",
+      "created_at": "2026-10-31T08:43:25.003082+00:00"
+    },
+    {
+      "id": "51cb92ac-3c43-48ae-8804-3e7fbd71253c",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "bf22b3f6-c937-4137-95f3-494724cb0714",
+      "credit": 0,
+      "debit": 10,
+      "balance_after": 0,
+      "description": "Cashback redeemed on Colour Printing",
+      "created_at": "2026-10-31T08:43:25.003082+00:00"
+    },
+    {
+      "id": "28149b52-f7a2-4646-8259-1969b45e9345",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "transaction_id": "f05b843d-b36a-45de-b906-0708ce5150a2",
+      "credit": 8.7,
+      "debit": 0,
+      "balance_after": 8.7,
+      "description": "Cashback earned on Xerox / Photocopy (₹435.22 paid)",
+      "created_at": "2026-10-31T07:57:42.240464+00:00"
+    },
+    {
+      "id": "356c2af7-27ab-4135-b017-3daee9488edc",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "transaction_id": "f05b843d-b36a-45de-b906-0708ce5150a2",
+      "credit": 0,
+      "debit": 8.78,
+      "balance_after": 0,
+      "description": "Cashback redeemed on Xerox / Photocopy",
+      "created_at": "2026-10-31T07:57:42.240464+00:00"
+    },
+    {
+      "id": "a876b962-bad2-4f52-944d-fbd7ac5dea46",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "transaction_id": "df7a2267-6b94-49f0-bb9b-c92d8b31bcde",
+      "credit": 8.78,
+      "debit": 0,
+      "balance_after": 8.78,
+      "description": "Cashback earned on Black & White Printing (₹438.82 paid)",
+      "created_at": "2026-10-31T05:59:59.099247+00:00"
+    },
+    {
+      "id": "8d54f240-2792-4266-81cf-0b943408029a",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "transaction_id": "df7a2267-6b94-49f0-bb9b-c92d8b31bcde",
+      "credit": 0,
+      "debit": 5.18,
+      "balance_after": 0,
+      "description": "Cashback redeemed on Black & White Printing",
+      "created_at": "2026-10-31T05:59:59.099247+00:00"
+    },
+    {
+      "id": "5e5109f3-55f9-4413-a9d0-d755e34324e4",
+      "customer_id": "05669c25-e79c-4709-85f7-be0204cec815",
+      "transaction_id": "edd58fb7-404b-4cdc-ad65-e35ce5c8c5b2",
+      "credit": 9.12,
+      "debit": 0,
+      "balance_after": 9.12,
+      "description": "Cashback earned on Xerox / Photocopy (₹456 paid)",
+      "created_at": "2026-10-31T05:22:47.306479+00:00"
+    },
+    {
+      "id": "39113129-9344-4929-b95f-9df694960abc",
+      "customer_id": "9a3568b8-8cbe-4d4a-ae5c-987e56a37227",
+      "transaction_id": "c19f6f70-5f56-4250-ba13-a08480dd4966",
+      "credit": 10,
+      "debit": 0,
+      "balance_after": 10,
+      "description": "Cashback earned on Colour Printing (₹500 paid)",
+      "created_at": "2026-10-31T05:20:04.317932+00:00"
+    },
+    {
+      "id": "dbc3b260-2bce-4990-ad32-dbe8dc9ac6ad",
+      "customer_id": "42fe23ac-c2aa-4a85-bbda-a681954da780",
+      "transaction_id": "19f58ccd-7555-4e78-940b-e27f6148d2e5",
+      "credit": 5.18,
+      "debit": 0,
+      "balance_after": 5.18,
+      "description": "Cashback earned on Colour Printing (₹259 paid)",
+      "created_at": "2026-10-31T05:18:02.151667+00:00"
+    }
+  ],
+  "shop_settings": [
+    {
+      "id": "fbcd2d8d-1522-4459-b82e-b30952c5b382",
+      "shop_name": "Smart Cashback Shop",
+      "shop_address": "",
+      "contact_number": "",
+      "cashback_percentage": 2,
+      "minimum_eligible_purchase": 99,
+      "currency": "INR",
+      "date_format": "DD/MM/YYYY",
+      "time_format": "12h",
+      "updated_at": "2026-10-31T04:47:19.233826+00:00"
+    }
+  ],
+  "service_categories": [
+    {
+      "id": "562be381-1e45-4c4e-94f9-4122e8ca8fd5",
+      "name": "Xerox / Photocopy",
+      "is_active": true,
+      "sort_order": 1,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "946e8852-03c5-4a5e-948b-3a14a542d33d",
+      "name": "Black & White Printing",
+      "is_active": true,
+      "sort_order": 2,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "56bdf492-5152-4ebf-ad69-d85e6025b9c4",
+      "name": "Colour Printing",
+      "is_active": true,
+      "sort_order": 3,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "a724494a-d543-4bba-82ef-b37058336498",
+      "name": "Scanning",
+      "is_active": true,
+      "sort_order": 4,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "816e4a1f-330f-41bc-a43b-b1a62c3d5116",
+      "name": "Lamination",
+      "is_active": true,
+      "sort_order": 5,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "8d4a27c6-558e-404e-a2c3-3895a3361588",
+      "name": "Binding",
+      "is_active": true,
+      "sort_order": 6,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "0676acf7-a83c-444c-8937-e45350b45e2e",
+      "name": "Mobile Recharge",
+      "is_active": true,
+      "sort_order": 7,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    },
+    {
+      "id": "82254a5e-7628-4b6d-9dab-9f5be7f1041c",
+      "name": "Other Services",
+      "is_active": true,
+      "sort_order": 8,
+      "created_at": "2026-10-31T04:47:19.233826+00:00"
+    }
+  ]
+}

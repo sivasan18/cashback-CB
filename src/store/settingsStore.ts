@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db'
 import type { ShopSettings } from '@/types'
 
 interface SettingsState {
@@ -53,7 +53,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fetchSettings: async () => {
     set({ loading: true })
     const localUPI = getStoredLocalUPISettings()
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('shop_settings')
       .select('*')
       .limit(1)
@@ -100,9 +100,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       time_format: updates.time_format ?? current.time_format,
     }
 
-    // Try saving base settings to Supabase
+    // Try saving base settings to Cloudflare D1
     try {
-      const { data } = await supabase
+      const { data } = await db
         .from('shop_settings')
         .upsert({ ...current, ...standardFields, updated_at: new Date().toISOString() })
         .select()
