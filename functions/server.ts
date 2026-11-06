@@ -278,6 +278,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         return json({ error: 'Invalid login credentials' }, 401)
       }
 
+      // Check if account is locked due to 5 failed attempts
+      if (user.is_locked === 1) {
+        return json({
+          error: 'Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default password.',
+          is_locked: true,
+          shop_id: user.shop_id,
+          login_id: user.email,
+          lock_reason: user.lock_reason
+        }, 423)
+      }
+
       const inputHash = await hashPassword(password, user.salt)
       let isPasswordValid = inputHash === user.password_hash
 
@@ -290,8 +301,57 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         }
       }
 
+      // Handle wrong password with 5-attempt lockout policy
       if (!isPasswordValid) {
-        return json({ error: 'Invalid login credentials' }, 401)
+        const newFailed = (user.failed_attempts || 0) + 1
+        if (newFailed >= 5) {
+          await env.DB.prepare(`
+            UPDATE admin_users SET
+              failed_attempts = ?,
+              is_locked = 1,
+              lock_reason = 'EXCESSIVE_FAILED_ATTEMPTS',
+              locked_at = datetime("now"),
+              updated_at = datetime("now")
+            WHERE id = ?
+          `).bind(newFailed, user.id).run()
+
+          return json({
+            error: 'Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default password.',
+            is_locked: true,
+            remaining_attempts: 0,
+            shop_id: user.shop_id,
+            login_id: user.email
+          }, 423)
+        } else {
+          await env.DB.prepare(`
+            UPDATE admin_users SET
+              failed_attempts = ?,
+              updated_at = datetime("now")
+            WHERE id = ?
+          `).bind(newFailed, user.id).run()
+
+          const remaining = 5 - newFailed
+          return json({
+            error: `Invalid password. ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} remaining before lockout.`,
+            is_locked: false,
+            remaining_attempts: remaining,
+            shop_id: user.shop_id,
+            login_id: user.email
+          }, 401)
+        }
+      }
+
+      // Successful password check: clear any past failed attempts or locks
+      if (user.failed_attempts > 0 || user.is_locked === 1) {
+        await env.DB.prepare(`
+          UPDATE admin_users SET
+            failed_attempts = 0,
+            is_locked = 0,
+            lock_reason = '',
+            locked_at = NULL,
+            updated_at = datetime("now")
+          WHERE id = ?
+        `).bind(user.id).run()
       }
 
       const secret = getJwtSecret(env)
@@ -310,6 +370,74 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           shop_id: user.shop_id,
           shop_name: user.shop_name || (user.role === 'super_admin' ? 'Master Food Court' : 'Smart Cashback Shop')
         }
+      })
+    }
+
+    // ─── REQUEST SHOP UNLOCK / RESET ALERT (Shopkeeper -> Owner) ─────────────
+    if (pathname === '/auth/request-unlock' && method === 'POST') {
+      const body = await request.json().catch(() => ({})) as any
+      const { shop_id, login_id } = body
+      if (!shop_id && !login_id) {
+        return json({ error: 'Shop ID or Login ID is required' }, 400)
+      }
+
+      let user: any = null
+      if (shop_id) {
+        user = await env.DB.prepare('SELECT id, shop_id, email FROM admin_users WHERE shop_id = ?').bind(parseInt(shop_id, 10)).first()
+      } else {
+        user = await env.DB.prepare('SELECT id, shop_id, email FROM admin_users WHERE lower(email) = ?').bind(login_id.toLowerCase().trim()).first()
+      }
+
+      if (!user) {
+        return json({ error: 'Shop account not found' }, 404)
+      }
+
+      await env.DB.prepare(`
+        UPDATE admin_users SET
+          is_locked = 1,
+          lock_reason = 'RESET_REQUESTED_BY_SHOP',
+          locked_at = coalesce(locked_at, datetime("now")),
+          updated_at = datetime("now")
+        WHERE id = ?
+      `).bind(user.id).run()
+
+      return json({
+        success: true,
+        message: 'Password reset request has been logged. The Food Court Owner has been notified.'
+      })
+    }
+
+    // ─── OWNER SELF-RECOVERY (PIN = 1818) ─────────────────────────────────────
+    if (pathname === '/auth/owner-recovery' && method === 'POST') {
+      const body = await request.json().catch(() => ({})) as any
+      const { email, recovery_pin } = body
+
+      if (!email || !recovery_pin) {
+        return json({ error: 'Owner email and recovery PIN are required' }, 400)
+      }
+
+      if (email.trim().toLowerCase() !== 'sivar75@gmail.com' || recovery_pin.toString().trim() !== '1818') {
+        return json({ error: 'Invalid recovery PIN or owner email.' }, 403)
+      }
+
+      const adminSalt = '6dc68d727c91a7c87408ec6480b57aac'
+      const defaultOwnerHash = await hashPassword('San@1818', adminSalt)
+
+      await env.DB.prepare(`
+        UPDATE admin_users SET
+          password_hash = ?,
+          salt = ?,
+          failed_attempts = 0,
+          is_locked = 0,
+          lock_reason = '',
+          locked_at = NULL,
+          updated_at = datetime("now")
+        WHERE lower(email) = 'sivar75@gmail.com'
+      `).bind(defaultOwnerHash, adminSalt).run()
+
+      return json({
+        success: true,
+        message: 'Owner password has been restored to default (San@1818).'
       })
     }
 
@@ -521,6 +649,60 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           ORDER BY total_sales DESC LIMIT 20
         `).all() as any
 
+        // 4. Security Alerts & Password Lockout Center
+        const { results: securityAlerts } = await env.DB.prepare(`
+          SELECT
+            u.id,
+            u.shop_id,
+            s.name as shop_name,
+            u.email as login_id,
+            u.failed_attempts,
+            u.is_locked,
+            u.lock_reason,
+            u.locked_at
+          FROM admin_users u
+          JOIN shops s ON u.shop_id = s.id
+          WHERE u.is_locked = 1 OR u.failed_attempts >= 3 OR u.lock_reason LIKE '%REQUESTED%'
+          ORDER BY u.is_locked DESC, u.failed_attempts DESC
+        `).all() as any
+
+        // 5. Peak Hours Distribution (Hourly Transactions 0-23)
+        const { results: hourlyDistribution } = await env.DB.prepare(`
+          SELECT
+            cast(strftime('%H', created_at) as integer) as hour,
+            count(*) as tx_count,
+            round(sum(amount_paid), 2) as total_sales
+          FROM transactions
+          WHERE status = 'completed'
+          GROUP BY hour
+          ORDER BY hour ASC
+        `).all() as any
+
+        // 6. Cross-Shop Customer Retention Metrics
+        const { results: crossVisitStats } = await env.DB.prepare(`
+          SELECT
+            mobile,
+            count(DISTINCT shop_id) as shops_count
+          FROM customers
+          WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+          GROUP BY mobile
+        `).all() as any
+
+        let singleShopCust = 0
+        let multiShopCust = 0
+        let threePlusShopCust = 0
+        ;(crossVisitStats || []).forEach((c: any) => {
+          if (c.shops_count === 1) singleShopCust++
+          else if (c.shops_count === 2) multiShopCust++
+          else if (c.shops_count >= 3) {
+            multiShopCust++
+            threePlusShopCust++
+          }
+        })
+
+        const totalUniqueCust = (crossVisitStats || []).length
+        const crossVisitRate = totalUniqueCust > 0 ? Math.round((multiShopCust / totalUniqueCust) * 100) : 0
+
         return json({
           data: {
             totals: {
@@ -535,9 +717,167 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
               total_wallet_liability: custRow?.total_wallet_liability || 0
             },
             shops: shopsSummary || [],
-            categoryBreakdown: categoryBreakdown || []
+            categoryBreakdown: categoryBreakdown || [],
+            securityAlerts: securityAlerts || [],
+            hourlyDistribution: hourlyDistribution || [],
+            retention: {
+              total_customers: totalUniqueCust,
+              single_shop_customers: singleShopCust,
+              multi_shop_customers: multiShopCust,
+              three_plus_shop_customers: threePlusShopCust,
+              cross_visit_rate: crossVisitRate
+            }
           }
         })
+      }
+
+      // ─── 1-CLICK DEFAULT PASSWORD RESTORE FOR ANY SHOP ──────────────────────
+      if (pathname.match(/^\/owner\/shops\/(\d+)\/reset-default-password$/) && method === 'POST') {
+        const targetShopId = parseInt(pathname.split('/')[3], 10)
+        const shopNumPad = targetShopId.toString().padStart(2, '0')
+        const defaultPassword = `shop@${shopNumPad}${shopNumPad}`
+        const adminSalt = '6dc68d727c91a7c87408ec6480b57aac'
+        const defaultHash = await hashPassword(defaultPassword, adminSalt)
+
+        await env.DB.prepare(`
+          UPDATE admin_users SET
+            password_hash = ?,
+            salt = ?,
+            failed_attempts = 0,
+            is_locked = 0,
+            lock_reason = '',
+            locked_at = NULL,
+            updated_at = datetime("now")
+          WHERE shop_id = ?
+        `).bind(defaultHash, adminSalt, targetShopId).run()
+
+        const s = await env.DB.prepare('SELECT name FROM shops WHERE id = ?').bind(targetShopId).first() as any
+
+        return json({
+          success: true,
+          message: `Password for Shop ${shopNumPad} (${s?.name || 'Shop'}) has been reset to default (${defaultPassword}). Account unlocked.`,
+          default_password: defaultPassword
+        })
+      }
+
+      // ─── CUSTOMER DIRECTORY & SHOP-WISE EXPLORER ───────────────────────────
+      if (pathname === '/owner/customers' && method === 'GET') {
+        const search = url.searchParams.get('search')?.trim().toLowerCase()
+        const shopFilter = url.searchParams.get('shop_id')
+        const mode = url.searchParams.get('mode') || (shopFilter ? 'shop' : 'customer')
+
+        if (mode === 'customer') {
+          // Mode A: Grouped by Mobile across all 18 shops
+          let baseQuery = `
+            SELECT
+              mobile,
+              max(name) as name,
+              round(sum(cashback_balance), 2) as total_combined_balance,
+              round(sum(cashback_earned), 2) as total_combined_earned,
+              round(sum(cashback_redeemed), 2) as total_combined_redeemed,
+              round(sum(total_purchases), 2) as total_combined_purchases,
+              count(DISTINCT shop_id) as total_shops_visited,
+              max(updated_at) as most_recent_activity
+            FROM customers
+            WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+          `
+          const params: any[] = []
+
+          if (search) {
+            baseQuery += ' AND (lower(name) LIKE ? OR mobile LIKE ?)'
+            params.push(`%${search}%`, `${search}%`)
+          }
+
+          baseQuery += ' GROUP BY mobile ORDER BY total_combined_balance DESC, most_recent_activity DESC LIMIT 100'
+
+          const { results: customerGroups } = await env.DB.prepare(baseQuery).bind(...params).all() as any
+          const customerList = customerGroups || []
+
+          // Fetch per-shop details for each customer
+          const enriched = await Promise.all(
+            customerList.map(async (c: any) => {
+              const { results: visitedShops } = await env.DB.prepare(`
+                SELECT
+                  c.shop_id,
+                  s.name as shop_name,
+                  s.icon as shop_icon,
+                  c.cashback_balance,
+                  c.cashback_earned,
+                  c.cashback_redeemed,
+                  c.total_purchases,
+                  c.updated_at as last_purchase_date,
+                  (
+                    SELECT service_category
+                    FROM transactions
+                    WHERE customer_id = c.id AND shop_id = c.shop_id
+                    ORDER BY created_at DESC LIMIT 1
+                  ) as recent_category
+                FROM customers c
+                JOIN shops s ON c.shop_id = s.id
+                WHERE c.mobile = ?
+                ORDER BY s.id ASC
+              `).bind(c.mobile).all() as any
+
+              return {
+                ...c,
+                shops: visitedShops || []
+              }
+            })
+          )
+
+          return json({
+            data: enriched,
+            total: enriched.length,
+            mode: 'customer'
+          })
+        } else {
+          // Mode B: Shop-Wise View (Filter by shop 1..18 or all)
+          let query = `
+            SELECT
+              c.id,
+              c.shop_id,
+              s.name as shop_name,
+              s.icon as shop_icon,
+              c.name,
+              c.mobile,
+              c.cashback_balance,
+              c.total_purchases,
+              c.cashback_earned,
+              c.cashback_redeemed,
+              c.created_at,
+              c.updated_at as last_purchase_date,
+              (
+                SELECT service_category
+                FROM transactions
+                WHERE customer_id = c.id AND shop_id = c.shop_id
+                ORDER BY created_at DESC LIMIT 1
+              ) as recent_category
+            FROM customers c
+            JOIN shops s ON c.shop_id = s.id
+            WHERE c.name != '[Deleted Customer]' AND c.mobile NOT LIKE 'DEL%'
+          `
+          const params: any[] = []
+
+          if (shopFilter && !isNaN(parseInt(shopFilter, 10))) {
+            query += ' AND c.shop_id = ?'
+            params.push(parseInt(shopFilter, 10))
+          }
+
+          if (search) {
+            query += ' AND (lower(c.name) LIKE ? OR c.mobile LIKE ?)'
+            params.push(`%${search}%`, `${search}%`)
+          }
+
+          query += ' ORDER BY c.updated_at DESC LIMIT 200'
+
+          const { results: shopCustomers } = await env.DB.prepare(query).bind(...params).all() as any
+
+          return json({
+            data: shopCustomers || [],
+            total: (shopCustomers || []).length,
+            mode: 'shop'
+          })
+        }
       }
 
       if (pathname === '/owner/shops' && method === 'GET') {

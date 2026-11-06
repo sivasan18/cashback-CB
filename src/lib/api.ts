@@ -37,7 +37,7 @@ async function request<T = any>(endpoint: string, options: RequestInit = {}): Pr
     const result = await res.json().catch(() => ({}))
 
     if (!res.ok) {
-      return { error: { message: result.error || `HTTP error ${res.status}` } }
+      return { error: { message: result.error || `HTTP error ${res.status}`, ...result } }
     }
 
     return { data: result.data !== undefined ? result.data : result }
@@ -99,6 +99,20 @@ export const cloudflareApi = {
         body: JSON.stringify({ newPassword: password })
       })
       return { data, error }
+    },
+
+    async requestUnlock(payload: { shop_id?: number; login_id?: string }) {
+      return request<{ success: boolean; message: string }>('/auth/request-unlock', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+    },
+
+    async ownerRecovery(payload: { email: string; recovery_pin: string }) {
+      return request<{ success: boolean; message: string }>('/auth/owner-recovery', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
     }
   },
 
@@ -325,6 +339,28 @@ export const cloudflareApi = {
           total_sales: number
           cashback_earned: number
         }>
+        securityAlerts: Array<{
+          id: string
+          shop_id: number
+          shop_name: string
+          login_id: string
+          failed_attempts: number
+          is_locked: number
+          lock_reason: string
+          locked_at: string | null
+        }>
+        hourlyDistribution: Array<{
+          hour: number
+          tx_count: number
+          total_sales: number
+        }>
+        retention: {
+          total_customers: number
+          single_shop_customers: number
+          multi_shop_customers: number
+          three_plus_shop_customers: number
+          cross_visit_rate: number
+        }
       }>('/owner/overview')
     },
     async getShops() {
@@ -335,6 +371,22 @@ export const cloudflareApi = {
         method: 'PUT',
         body: JSON.stringify(data)
       })
+    },
+    async resetDefaultPassword(shopId: number) {
+      return request<{ success: boolean; message: string; default_password: string }>(`/owner/shops/${shopId}/reset-default-password`, {
+        method: 'POST'
+      })
+    },
+    async getCustomers(params: { search?: string; shop_id?: number; mode?: 'customer' | 'shop' } = {}) {
+      const qs = new URLSearchParams()
+      if (params.search) qs.set('search', params.search)
+      if (params.shop_id) qs.set('shop_id', params.shop_id.toString())
+      if (params.mode) qs.set('mode', params.mode)
+      return request<{
+        data: any[]
+        total: number
+        mode: string
+      }>(`/owner/customers?${qs.toString()}`)
     }
   },
 

@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useThemeStore, type ThemeMode } from '@/store/themeStore'
+import { getShopTheme } from '@/lib/shopThemes'
 import toast from 'react-hot-toast'
 
 // Exact requested menu order:
@@ -35,6 +36,7 @@ export default function AppLayout() {
   const { theme, setTheme, resolvedTheme } = useThemeStore()
   const navigate = useNavigate()
   const location = useLocation()
+  const shopTheme = getShopTheme(user?.shop_id)
 
   const handleSignOut = async () => {
     await signOut()
@@ -69,16 +71,24 @@ export default function AppLayout() {
       >
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-dark-800/80">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-md shadow-brand-500/20 flex-shrink-0">
+          <div
+            className={`w-9 h-9 rounded-xl bg-gradient-to-br ${shopTheme.primaryGradient} flex items-center justify-center shadow-md flex-shrink-0 transition-transform hover:scale-105`}
+            style={{ boxShadow: `0 4px 12px ${shopTheme.glowColor}` }}
+          >
             <Zap size={18} className="text-white" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-900 dark:text-white truncate tracking-tight">
-              {settings?.shop_name || 'Smart Cashback'}
+              {settings?.shop_name || shopTheme.name}
             </p>
-            <p className="text-[11px] font-medium text-brand-600 dark:text-brand-400">
-              Shop Management
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-bold ${shopTheme.badgeBg} ${shopTheme.badgeText} border ${shopTheme.badgeBorder}`}>
+                Shop #{user?.shop_id || 18}
+              </span>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                {shopTheme.name}
+              </p>
+            </div>
           </div>
           <button
             className="ml-auto lg:hidden btn-icon"
@@ -173,14 +183,18 @@ export default function AppLayout() {
         {/* User Footer */}
         <div className="px-3 py-3 border-t border-slate-100 dark:border-dark-800/80">
           <div className="flex items-center gap-3 px-2 py-2 mb-1 rounded-xl bg-slate-50 dark:bg-dark-950/60 border border-slate-100 dark:border-dark-800/60">
-            <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-950/80 text-brand-700 dark:text-brand-300 flex items-center justify-center flex-shrink-0 font-bold text-xs">
-              {user?.email?.[0]?.toUpperCase() ?? 'A'}
+            <div
+              className={`w-8 h-8 rounded-lg bg-gradient-to-br ${shopTheme.primaryGradient} text-white flex items-center justify-center flex-shrink-0 font-bold text-xs shadow-sm`}
+            >
+              {user?.shop_id ? `#${user.shop_id}` : (user?.email?.[0]?.toUpperCase() ?? 'A')}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
                 {user?.email || 'Admin'}
               </p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">Administrator</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                {shopTheme.name}
+              </p>
             </div>
           </div>
           <button
@@ -205,10 +219,13 @@ export default function AppLayout() {
             <Menu size={20} />
           </button>
 
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" />
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              System Online
+          <div className="hidden sm:flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full animate-pulse" style={{ backgroundColor: shopTheme.accentColor }} />
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+              {settings?.shop_name || shopTheme.name}
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${shopTheme.badgeBg} ${shopTheme.badgeText} border ${shopTheme.badgeBorder}`}>
+              Food Court Tenant #{user?.shop_id || 18}
             </span>
           </div>
 

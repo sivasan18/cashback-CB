@@ -2,11 +2,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Users, ShoppingBag, Gift, Receipt, Wallet,
-  Search, ArrowRight
+  Search, ArrowRight, Sparkles
 } from 'lucide-react'
 import { db } from '@/lib/db'
 import { formatCurrency, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
+import { useAuthStore } from '@/store/authStore'
+import { getShopTheme } from '@/lib/shopThemes'
 import { format, subDays, startOfDay, endOfDay } from 'date-fns'
 import type { Transaction, Customer } from '@/types'
 import {
@@ -19,6 +21,8 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 export default function DashboardPage() {
   const { settings } = useSettingsStore()
+  const { user } = useAuthStore()
+  const shopTheme = getShopTheme(user?.shop_id)
   const navigate = useNavigate()
   const [stats, setStats] = useState({
     todaySales: 0, totalCustomers: 0, todayNewCustomers: 0,
@@ -126,18 +130,31 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="section-header">
-        <div>
-          <h1 className="section-title">Dashboard</h1>
-          <p className="section-subtitle">
-            {settings?.shop_name} · {format(new Date(), 'EEEE, dd MMMM yyyy')}
-          </p>
+      {/* Dynamic Shop Hero Banner */}
+      <div className={`relative overflow-hidden rounded-2xl p-5 border ${shopTheme.cardBorder} bg-gradient-to-r ${shopTheme.heroGradient} bg-white dark:bg-dark-900 shadow-sm transition-all`}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${shopTheme.badgeBg} ${shopTheme.badgeText} border ${shopTheme.badgeBorder}`}>
+                <Sparkles size={12} />
+                Food Court Shop #{user?.shop_id || 18}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                {format(new Date(), 'EEEE, dd MMMM yyyy')}
+              </span>
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+              {settings?.shop_name || shopTheme.name}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {shopTheme.tagline}
+            </p>
+          </div>
+          <button onClick={() => navigate('/billing')} className="btn-primary shadow-md hover:scale-[1.02] transition-transform">
+            <Receipt size={16} />
+            New Bill
+          </button>
         </div>
-        <button onClick={() => navigate('/billing')} className="btn-primary">
-          <Receipt size={16} />
-          New Bill
-        </button>
       </div>
 
       {/* Stat cards */}
@@ -198,8 +215,8 @@ export default function DashboardPage() {
                 datasets: [{
                   label: 'Sales (₹)',
                   data: dailySales.data,
-                  backgroundColor: 'rgba(91, 61, 245, 0.25)',
-                  borderColor: '#5B3DF5',
+                  backgroundColor: shopTheme.glowColor,
+                  borderColor: shopTheme.accentColor,
                   borderWidth: 2,
                   borderRadius: 6,
                 }],

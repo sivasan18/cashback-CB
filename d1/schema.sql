@@ -115,17 +115,22 @@ CREATE INDEX IF NOT EXISTS idx_cashback_ledger_created_at     ON cashback_ledger
 
 -- ─── 6. admin_users (Food Court & Shop Authentication) ────────
 CREATE TABLE IF NOT EXISTS admin_users (
-  id            TEXT PRIMARY KEY,
-  shop_id       INTEGER REFERENCES shops(id),
-  email         TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  salt          TEXT NOT NULL,
-  role          TEXT NOT NULL DEFAULT 'admin',
-  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  id              TEXT PRIMARY KEY,
+  shop_id         INTEGER REFERENCES shops(id),
+  email           TEXT NOT NULL UNIQUE,
+  password_hash   TEXT NOT NULL,
+  salt            TEXT NOT NULL,
+  role            TEXT NOT NULL DEFAULT 'admin',
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  is_locked       INTEGER NOT NULL DEFAULT 0,
+  lock_reason     TEXT DEFAULT '',
+  locked_at       TEXT,
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_admin_users_shop_id ON admin_users (shop_id);
+CREATE INDEX IF NOT EXISTS idx_admin_users_shop_id   ON admin_users (shop_id);
+CREATE INDEX IF NOT EXISTS idx_admin_users_is_locked ON admin_users (is_locked);
 
 -- ─── 7. admin_audit_logs ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS admin_audit_logs (

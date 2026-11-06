@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
-  Eye, EyeOff, Lock, Store,
+  Eye, EyeOff, Lock, Store, AlertTriangle, ShieldAlert,
+  CheckCircle2, RefreshCw, Send,
   Apple, UtensilsCrossed, Flame, Pizza, Soup, Utensils,
   IceCream, Cookie, GlassWater, Coffee, Gamepad2, Snowflake,
   Disc, CookingPot, Sparkles, ShoppingBag, Tag, Printer
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useSettingsStore } from '@/store/settingsStore'
+import { cloudflareApi } from '@/lib/api'
+import { getShopTheme } from '@/lib/shopThemes'
 import toast from 'react-hot-toast'
 
 export interface ShopOption {
@@ -49,11 +52,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [errors, setErrors] = useState<{ password?: string }>({})
+  const [isLocked, setIsLocked] = useState(false)
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
+  const [requestingUnlock, setRequestingUnlock] = useState(false)
+  const [unlockRequested, setUnlockRequested] = useState(false)
 
   // Default redirect after login is strictly New Bill (/billing)
   if (session) return <Navigate to="/billing" replace />
 
   const currentShop = SHOPS_LIST.find(s => s.id === selectedShopId) || SHOPS_LIST[17]
+  const shopTheme = getShopTheme(currentShop.id)
   const ShopIcon = currentShop.icon
 
   const handleShopChange = (id: number) => {
@@ -61,6 +69,9 @@ export default function LoginPage() {
     localStorage.setItem('last_selected_shop_id', id.toString())
     setPassword('')
     setErrors({})
+    setIsLocked(false)
+    setRemainingAttempts(null)
+    setUnlockRequested(false)
   }
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -70,36 +81,130 @@ export default function LoginPage() {
       return
     }
 
-    const { error } = await signIn(currentShop.login, password)
-    if (error) {
-      toast.error(error)
-      setErrors({ password: 'Invalid credentials. Please verify your shop password.' })
+    const res = await signIn(currentShop.login, password)
+    if (res.error) {
+      if (res.is_locked || res.error.toLowerCase().includes('locked')) {
+        setIsLocked(true)
+        setRemainingAttempts(0)
+        setErrors({ password: res.error })
+        toast.error('Shop account is locked!')
+      } else {
+        if (typeof res.remaining_attempts === 'number') {
+          setRemainingAttempts(res.remaining_attempts)
+        }
+        setErrors({ password: res.error })
+        toast.error(res.error)
+      }
     } else {
       await fetchSettings()
       toast.success(`Welcome to ${currentShop.name}!`)
     }
   }
 
+  const handleRequestOwnerReset = async () => {
+    setRequestingUnlock(true)
+    const { error } = await cloudflareApi.auth.requestUnlock({
+      shop_id: currentShop.id,
+      login_id: currentShop.login
+    })
+    setRequestingUnlock(false)
+
+    if (error) {
+      toast.error(error.message || 'Failed to submit reset request')
+    } else {
+      setUnlockRequested(true)
+      toast.success('Food Court Owner has been alerted to reset your password!')
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-dark-950 flex items-center justify-center p-4 transition-colors duration-200">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-slate-50 dark:bg-dark-950 flex items-center justify-center p-4 transition-colors duration-200 relative overflow-hidden">
+      {/* Decorative ambient backdrop based on shop palette */}
+      <div
+        className="pointer-events-none absolute -top-40 -left-40 w-96 h-96 rounded-full blur-3xl opacity-20 dark:opacity-30 transition-all duration-700"
+        style={{ backgroundColor: shopTheme.accentColor }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-40 -right-40 w-96 h-96 rounded-full blur-3xl opacity-20 dark:opacity-30 transition-all duration-700"
+        style={{ backgroundColor: shopTheme.accentColor }}
+      />
+
+      <div className="w-full max-w-md relative z-10">
         {/* Card */}
-        <div className="bg-white dark:bg-dark-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-dark-950 border border-slate-200/80 dark:border-dark-800 p-8 animate-fade-in transition-colors duration-200">
+        <div className={`bg-white dark:bg-dark-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-dark-950 border ${shopTheme.cardBorder} p-8 animate-fade-in transition-all duration-300`}>
           {/* Dynamic Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex w-16 h-16 rounded-2xl bg-brand-600 items-center justify-center shadow-lg shadow-brand-600/30 mb-4 transition-all duration-300">
+          <div className="text-center mb-7">
+            <div
+              className={`inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr ${shopTheme.primaryGradient} items-center justify-center shadow-lg mb-3.5 transition-all duration-300`}
+              style={{ boxShadow: `0 10px 25px -5px ${shopTheme.glowColor}` }}
+            >
               <ShopIcon size={30} className="text-white" />
             </div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 dark:bg-brand-950/80 dark:text-brand-300 border border-brand-200 dark:border-brand-800/80 mb-2">
+
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${shopTheme.badgeBg} ${shopTheme.badgeText} border ${shopTheme.badgeBorder} mb-2`}>
               Shop {currentShop.id.toString().padStart(2, '0')} • {currentShop.badge}
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
+
+            <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               {currentShop.name}
             </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Shopkeeper Terminal Sign In
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
+              {shopTheme.tagline}
             </p>
           </div>
+
+          {/* Account Locked Alert Box */}
+          {isLocked && (
+            <div className="mb-5 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-left animate-shake">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert size={20} className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-rose-800 dark:text-rose-200 uppercase tracking-wide">
+                    Terminal Locked (5 Failed Attempts)
+                  </h3>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
+                    Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default pattern.
+                  </p>
+
+                  {unlockRequested ? (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
+                      <CheckCircle2 size={14} />
+                      Reset request sent to Food Court Owner!
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleRequestOwnerReset}
+                      disabled={requestingUnlock}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-600/30 transition-all disabled:opacity-50"
+                    >
+                      {requestingUnlock ? (
+                        <>
+                          <RefreshCw size={12} className="animate-spin" />
+                          Sending Alert…
+                        </>
+                      ) : (
+                        <>
+                          <Send size={12} />
+                          Request Owner Password Reset
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Remaining Attempts Warning */}
+          {!isLocked && remainingAttempts !== null && remainingAttempts > 0 && remainingAttempts < 5 && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-200 animate-fade-in">
+              <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span>
+                <strong>Warning:</strong> {remainingAttempts} {remainingAttempts === 1 ? 'attempt' : 'attempts'} remaining before shop account is locked.
+              </span>
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -147,7 +252,7 @@ export default function LoginPage() {
                   }}
                   className={`form-input pl-10 pr-10 ${errors.password ? 'border-rose-400 dark:border-rose-500' : ''}`}
                   placeholder="••••••••"
-                  disabled={loading}
+                  disabled={loading || isLocked}
                   autoFocus
                 />
                 <button
@@ -156,23 +261,27 @@ export default function LoginPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                   tabIndex={-1}
                   aria-label={showPwd ? 'Hide password' : 'Show password'}
+                  disabled={isLocked}
                 >
                   {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
-              {errors.password && <p className="form-error">{errors.password}</p>}
+              {errors.password && !isLocked && <p className="form-error">{errors.password}</p>}
             </div>
 
             <button
               type="submit"
-              className="btn-primary w-full py-3 text-base mt-2 shadow-md shadow-brand-600/20"
-              disabled={loading}
+              className={`w-full py-3 text-base mt-2 font-bold text-white rounded-xl bg-gradient-to-r ${shopTheme.primaryGradient} hover:opacity-95 shadow-lg transition-all duration-200 disabled:opacity-50`}
+              style={{ boxShadow: `0 8px 20px -4px ${shopTheme.glowColor}` }}
+              disabled={loading || isLocked}
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   Authenticating Shop…
                 </span>
+              ) : isLocked ? (
+                'Terminal Locked'
               ) : (
                 `Enter ${currentShop.name}`
               )}

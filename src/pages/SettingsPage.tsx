@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Settings, Save, Plus, Trash2, GripVertical, KeyRound,
   AlertOctagon, AlertTriangle, ShieldCheck, Lock, CheckCircle2, X,
-  QrCode, Monitor
+  QrCode, Monitor, Search
 } from 'lucide-react'
 import { db } from '@/lib/db'
 import { useSettingsStore } from '@/store/settingsStore'
@@ -25,6 +25,7 @@ export default function SettingsPage() {
     display_timeout_seconds: 5,
   })
   const [categories, setCategories] = useState<ServiceCategory[]>([])
+  const [catFilter, setCatFilter] = useState('')
   const [newCat, setNewCat] = useState('')
   const [saving, setSaving] = useState(false)
   const [pwdForm, setPwdForm] = useState({ newPwd: '', confirmPwd: '' })
@@ -440,37 +441,59 @@ export default function SettingsPage() {
 
       {/* ── Service Categories ── */}
       <div className="page-card p-6 space-y-4">
-        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-          Service Categories
-        </h2>
-        <div className="space-y-2">
-          {categories.map(cat => (
-            <div
-              key={cat.id}
-              className="flex items-center gap-3 py-2 px-3 rounded-xl border border-slate-100 dark:border-dark-800 hover:border-slate-200 dark:hover:border-dark-700 bg-white dark:bg-dark-900 transition-colors"
-            >
-              <GripVertical size={14} className="text-slate-300 dark:text-dark-600 flex-shrink-0" />
-              <span className={`flex-1 text-sm font-medium ${cat.is_active ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400 line-through'}`}>
-                {cat.name}
-              </span>
-              <button
-                onClick={() => handleToggleCategory(cat)}
-                className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
-                  cat.is_active
-                    ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800'
-                    : 'bg-slate-100 dark:bg-dark-800 text-slate-500'
-                }`}
-              >
-                {cat.is_active ? 'Active' : 'Inactive'}
-              </button>
-              <button
-                onClick={() => handleDeleteCategory(cat.id)}
-                className="btn-icon text-rose-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-              >
-                <Trash2 size={14} />
-              </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+              Service Categories ({categories.length} total)
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Supports 100+ menu and service items with instant search
+            </p>
+          </div>
+          {categories.length > 5 && (
+            <div className="relative w-48 sm:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Filter categories…"
+                value={catFilter}
+                onChange={e => setCatFilter(e.target.value)}
+                className="form-input pl-8 text-xs py-1"
+              />
             </div>
-          ))}
+          )}
+        </div>
+
+        <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+          {categories
+            .filter(c => !catFilter.trim() || c.name.toLowerCase().includes(catFilter.toLowerCase()))
+            .map(cat => (
+              <div
+                key={cat.id}
+                className="flex items-center gap-3 py-2 px-3 rounded-xl border border-slate-100 dark:border-dark-800 hover:border-slate-200 dark:hover:border-dark-700 bg-white dark:bg-dark-900 transition-colors"
+              >
+                <GripVertical size={14} className="text-slate-300 dark:text-dark-600 flex-shrink-0" />
+                <span className={`flex-1 text-sm font-medium ${cat.is_active ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400 line-through'}`}>
+                  {cat.name}
+                </span>
+                <button
+                  onClick={() => handleToggleCategory(cat)}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                    cat.is_active
+                      ? 'bg-brand-50 dark:bg-brand-950/70 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800'
+                      : 'bg-slate-100 dark:bg-dark-800 text-slate-500'
+                  }`}
+                >
+                  {cat.is_active ? 'Active' : 'Inactive'}
+                </button>
+                <button
+                  onClick={() => handleDeleteCategory(cat.id)}
+                  className="btn-icon text-rose-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
         </div>
 
         <div className="flex gap-2 pt-2">
@@ -479,7 +502,7 @@ export default function SettingsPage() {
             value={newCat}
             onChange={e => setNewCat(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
-            placeholder="New service category name…"
+            placeholder="Add new service or menu category name…"
             className="form-input flex-1"
           />
           <button onClick={handleAddCategory} className="btn-primary px-4">

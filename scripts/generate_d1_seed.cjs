@@ -66,12 +66,12 @@ async function generateSeed() {
 
   sqlStatements.push('-- 1. Food Court Accounts');
   // Master Owner
-  sqlStatements.push(`INSERT OR REPLACE INTO admin_users (id, shop_id, email, password_hash, salt, role, created_at, updated_at) VALUES ('usr_owner_01', NULL, 'sivar75@gmail.com', '${ownerHash}', '${adminSalt}', 'super_admin', datetime('now'), datetime('now'));`);
+  sqlStatements.push(`INSERT OR REPLACE INTO admin_users (id, shop_id, email, password_hash, salt, role, failed_attempts, is_locked, lock_reason, locked_at, created_at, updated_at) VALUES ('usr_owner_01', NULL, 'sivar75@gmail.com', '${ownerHash}', '${adminSalt}', 'super_admin', 0, 0, '', NULL, datetime('now'), datetime('now'));`);
 
   // 18 Shop accounts
   for (const s of SHOPS_DEF) {
     const pwdHash = crypto.pbkdf2Sync(s.pwd, saltBuf, 100000, 32, 'sha256').toString('hex');
-    sqlStatements.push(`INSERT OR REPLACE INTO admin_users (id, shop_id, email, password_hash, salt, role, created_at, updated_at) VALUES ('usr_shop_${s.login.slice(-2)}', ${s.id}, '${s.login}', '${pwdHash}', '${adminSalt}', 'admin', datetime('now'), datetime('now'));`);
+    sqlStatements.push(`INSERT OR REPLACE INTO admin_users (id, shop_id, email, password_hash, salt, role, failed_attempts, is_locked, lock_reason, locked_at, created_at, updated_at) VALUES ('usr_shop_${s.login.slice(-2)}', ${s.id}, '${s.login}', '${pwdHash}', '${adminSalt}', 'admin', 0, 0, '', NULL, datetime('now'), datetime('now'));`);
   }
   sqlStatements.push('');
 

@@ -19,7 +19,7 @@ interface AuthState {
   user: User | null
   loading: boolean
   initialized: boolean
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null; is_locked?: boolean; remaining_attempts?: number }>
   signOut: () => Promise<void>
   initialize: () => Promise<void>
 }
@@ -48,7 +48,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { data, error } = await cloudflareApi.auth.signInWithPassword({ email, password })
     set({ loading: false })
 
-    if (error || !data) return { error: error?.message || 'Login failed' }
+    if (error || !data) {
+      return {
+        error: error?.message || 'Login failed',
+        is_locked: error?.is_locked,
+        remaining_attempts: error?.remaining_attempts
+      }
+    }
     set({
       session: { access_token: data.session.access_token, user: data.user },
       user: data.user

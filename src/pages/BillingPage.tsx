@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, CheckCircle, Phone, ShoppingBag,
@@ -71,6 +71,13 @@ export default function BillingPage() {
   const [summary, setSummary] = useState<BillSummary | null>(null)
   const [saving, setSaving] = useState(false)
   const [lastSavedTxId, setLastSavedTxId] = useState<string | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState('')
+
+  const filteredCategories = useMemo(() => {
+    if (!categoryFilter.trim()) return categories
+    const q = categoryFilter.toLowerCase()
+    return categories.filter(c => c.name.toLowerCase().includes(q))
+  }, [categories, categoryFilter])
 
   useEffect(() => {
     db
@@ -912,15 +919,57 @@ export default function BillingPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label htmlFor="service-cat" className="form-label">
-                  Service Category
-                </label>
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="service-cat" className="form-label mb-0">
+                    Service / Menu Category ({categories.length} available)
+                  </label>
+                  {categories.length > 6 && (
+                    <span className="text-[11px] text-brand-600 dark:text-brand-400 font-medium">
+                      Fast Instant Filter (100+ items supported)
+                    </span>
+                  )}
+                </div>
+
+                {categories.length > 6 && (
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Type 1-2 letters to filter categories instantly (e.g. Biryani, Xerox, Momos)…"
+                      value={categoryFilter}
+                      onChange={e => setCategoryFilter(e.target.value)}
+                      className="form-input pl-9 text-xs py-1.5"
+                    />
+                  </div>
+                )}
+
+                <div className="max-h-36 overflow-y-auto pr-1 flex flex-wrap gap-1.5 p-1.5 rounded-xl bg-slate-50 dark:bg-dark-900 border border-slate-200/80 dark:border-dark-800">
+                  {filteredCategories.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-2 px-1">No categories match "{categoryFilter}"</p>
+                  ) : (
+                    filteredCategories.map((c: ServiceCategory) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setServiceCategory(c.name)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          serviceCategory === c.name
+                            ? 'bg-brand-600 text-white shadow-sm ring-2 ring-brand-500/30'
+                            : 'bg-white dark:bg-dark-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-dark-700 border border-slate-200/80 dark:border-dark-800'
+                        }`}
+                      >
+                        {c.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+
                 <select
                   id="service-cat"
                   value={serviceCategory}
                   onChange={e => setServiceCategory(e.target.value)}
-                  className="form-input"
+                  className="form-input hidden"
                 >
                   {categories.map(c => (
                     <option key={c.id} value={c.name}>
