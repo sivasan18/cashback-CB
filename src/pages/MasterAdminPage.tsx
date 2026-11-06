@@ -1,14 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  ShieldCheck, Store, TrendingUp, Users, DollarSign,
-  Receipt, ArrowUpRight, ArrowDownRight, RefreshCw, Lock,
-  Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, LogOut,
-  Edit2, KeyRound, Search, Download, ChevronDown, ChevronRight,
-  ShieldAlert, Clock, BarChart3, HelpCircle, Layers, Award, X
+  ShieldCheck, Store, Users,
+  RefreshCw, Eye, EyeOff, KeyRound, Search, Download, ChevronDown, ChevronRight,
+  Clock, X, UserPlus, Phone, User, Wallet
 } from 'lucide-react'
 import { cloudflareApi } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
-import { formatCurrency } from '@/lib/cashback'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 
@@ -69,7 +66,7 @@ interface OverviewData {
   }
 }
 
-export default function OwnerPortalPage() {
+export default function MasterAdminPage() {
   const { user, signIn, signOut, loading: authLoading } = useAuthStore()
 
   // Login form state
@@ -94,7 +91,7 @@ export default function OwnerPortalPage() {
   const [newPassword, setNewPassword] = useState('')
   const [editActive, setEditActive] = useState(true)
   const [updating, setUpdating] = useState(false)
-  const [resettingDefaultId, setResettingDefaultId] = useState<number | null>(null)
+  const [, setResettingDefaultId] = useState<number | null>(null)
 
   // Customer Explorer State
   const [customerMode, setCustomerMode] = useState<'customer' | 'shop'>('customer')
@@ -104,6 +101,14 @@ export default function OwnerPortalPage() {
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [expandedCustomerMobiles, setExpandedCustomerMobiles] = useState<Record<string, boolean>>({})
 
+  // Add Customer Modal State
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false)
+  const [newCustName, setNewCustName] = useState('')
+  const [newCustMobile, setNewCustMobile] = useState('')
+  const [newCustShopId, setNewCustShopId] = useState<number>(18)
+  const [newCustBalance, setNewCustBalance] = useState<string>('')
+  const [addingCustomer, setAddingCustomer] = useState(false)
+
   const isSuperAdmin = user?.role === 'super_admin'
 
   const fetchOverview = async () => {
@@ -111,7 +116,7 @@ export default function OwnerPortalPage() {
     const { data, error } = await cloudflareApi.owner.getOverview()
     setLoading(false)
     if (error) {
-      toast.error(error.message || 'Failed to load master overview')
+      toast.error(error.message || 'Failed to load master admin overview')
     } else if (data) {
       setOverview(data as any)
     }
@@ -150,7 +155,7 @@ export default function OwnerPortalPage() {
   }
 
   useEffect(() => {
-    document.title = 'Owner Admin | Smart Cashback Food Court'
+    document.title = 'Master Admin | Smart Cashback Food Court'
     if (isSuperAdmin) {
       fetchOverview()
     }
@@ -162,7 +167,7 @@ export default function OwnerPortalPage() {
     }
   }, [isSuperAdmin, activeTab, customerMode, selectedShopFilter])
 
-  const handleOwnerLogin = async (e: React.FormEvent) => {
+  const handleMasterLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError('')
     if (!password) {
@@ -175,11 +180,11 @@ export default function OwnerPortalPage() {
       setLoginError(error)
       toast.error('Access denied. Invalid credentials.')
     } else {
-      toast.success('Welcome to Owner Admin!')
+      toast.success('Welcome to Master Admin!')
     }
   }
 
-  const handleOwnerRecovery = async (e: React.FormEvent) => {
+  const handleMasterRecovery = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!recoveryPin.trim()) {
       toast.error('Please enter the 4-digit recovery PIN')
@@ -194,7 +199,7 @@ export default function OwnerPortalPage() {
     setRecovering(false)
 
     if (error) {
-      toast.error(error.message || 'Owner recovery failed. Incorrect PIN.')
+      toast.error(error.message || 'Master Admin recovery failed. Incorrect PIN.')
     } else {
       toast.success(data?.message || 'Password restored to San@1818!')
       setShowRecoveryModal(false)
@@ -242,6 +247,46 @@ export default function OwnerPortalPage() {
     }
   }
 
+  const handleAddCustomerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newCustName.trim()) {
+      toast.error('Customer name is required')
+      return
+    }
+    const cleanMob = newCustMobile.trim().replace(/\D/g, '')
+    if (!/^[6-9]\d{9}$/.test(cleanMob)) {
+      toast.error('Please enter a valid 10-digit mobile number starting with 6-9')
+      return
+    }
+
+    const initBal = newCustBalance.trim() ? parseFloat(newCustBalance) : 0
+    if (isNaN(initBal) || initBal < 0) {
+      toast.error('Initial cashback balance must be a non-negative number')
+      return
+    }
+
+    setAddingCustomer(true)
+    const { data, error } = await cloudflareApi.owner.addCustomer({
+      name: newCustName.trim(),
+      mobile: cleanMob,
+      shop_id: newCustShopId,
+      initial_balance: initBal
+    })
+    setAddingCustomer(false)
+
+    if (error) {
+      toast.error(error.message || 'Failed to add customer')
+    } else {
+      toast.success(data?.message || 'Customer added successfully by Master Admin!')
+      setShowAddCustomerModal(false)
+      setNewCustName('')
+      setNewCustMobile('')
+      setNewCustBalance('')
+      setNewCustShopId(18)
+      fetchCustomers()
+    }
+  }
+
   const toggleCustomerExpand = (mob: string) => {
     setExpandedCustomerMobiles(prev => ({
       ...prev,
@@ -265,6 +310,7 @@ export default function OwnerPortalPage() {
         'Total Cashback Earned (₹)': c.total_combined_earned,
         'Total Cashback Redeemed (₹)': c.total_combined_redeemed,
         'Shops Visited Count': c.total_shops_visited,
+        'Added By / Source': c.added_by || 'Shop',
         'Visited Shops List': (c.shops || []).map((s: any) => `${s.shop_name} (₹${s.cashback_balance})`).join(', '),
         'Most Recent Activity': c.most_recent_activity ? new Date(c.most_recent_activity).toLocaleString('en-IN') : 'N/A'
       }))
@@ -278,6 +324,7 @@ export default function OwnerPortalPage() {
         'Total Purchases (₹)': c.total_purchases,
         'Cashback Earned (₹)': c.cashback_earned,
         'Cashback Redeemed (₹)': c.cashback_redeemed,
+        'Added By / Source': c.added_by || 'Shop',
         'Recent Category': c.recent_category || 'N/A',
         'Last Purchase Date': c.last_purchase_date ? new Date(c.last_purchase_date).toLocaleString('en-IN') : 'N/A'
       }))
@@ -302,16 +349,16 @@ export default function OwnerPortalPage() {
                 <ShieldCheck size={32} className="text-white" />
               </div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 mb-2">
-                Secret Owner Admin Portal
+                Secret Master Admin Portal
               </div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-white">Owner Admin</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-white">Master Admin</h1>
               <p className="text-xs text-slate-400 mt-1">Multi-Tenant 18-Shop Administration</p>
             </div>
 
-            <form onSubmit={handleOwnerLogin} className="space-y-4">
+            <form onSubmit={handleMasterLogin} className="space-y-4">
               <div>
                 <label className="text-xs font-medium text-slate-300 block mb-1">
-                  Owner Email Address
+                  Master Admin Email Address
                 </label>
                 <input
                   type="email"
@@ -365,13 +412,13 @@ export default function OwnerPortalPage() {
                 disabled={authLoading}
                 className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-600/25 transition-all mt-4 disabled:opacity-50"
               >
-                {authLoading ? 'Verifying Master Credentials…' : 'Access Master Portal'}
+                {authLoading ? 'Verifying Master Credentials…' : 'Access Master Admin Portal'}
               </button>
             </form>
 
             <div className="mt-6 pt-5 border-t border-slate-800 text-center">
               <p className="text-[11px] text-slate-500">
-                Confidential Master URL • Unauthorized Access Strictly Prohibited
+                Confidential Master Admin URL • Unauthorized Access Strictly Prohibited
               </p>
             </div>
           </div>
@@ -383,13 +430,13 @@ export default function OwnerPortalPage() {
             <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl animate-fade-in">
               <div className="flex items-center gap-2.5 text-amber-400 mb-2">
                 <KeyRound size={20} />
-                <h3 className="text-sm font-bold text-white">Owner Self-Recovery</h3>
+                <h3 className="text-sm font-bold text-white">Master Admin Self-Recovery</h3>
               </div>
               <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                Restore the master account (<span className="text-slate-200 font-mono">sivar75@gmail.com</span>) back to default password <span className="text-amber-400 font-mono">San@1818</span> using your secret recovery PIN.
+                Restore the master admin account (<span className="text-slate-200 font-mono">sivar75@gmail.com</span>) back to default password <span className="text-amber-400 font-mono">San@1818</span> using your secret recovery PIN.
               </p>
 
-              <form onSubmit={handleOwnerRecovery} className="space-y-3">
+              <form onSubmit={handleMasterRecovery} className="space-y-3">
                 <div>
                   <label className="text-xs font-medium text-slate-300 block mb-1">
                     Master Recovery PIN
@@ -443,209 +490,149 @@ export default function OwnerPortalPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-white tracking-tight">Owner Admin</h1>
+              <h1 className="text-lg font-bold text-white tracking-tight">Master Admin</h1>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 18 Shops
               </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                Master Admin Portal
+              </span>
             </div>
-            <p className="text-xs text-slate-400">Owner: sivar75@gmail.com</p>
+            <p className="text-xs text-slate-400">
+              Food Court Multi-Tenant Control System • Logged in as <span className="text-slate-200 font-medium">Master Admin</span> ({user?.email})
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchOverview}
+            onClick={() => {
+              fetchOverview()
+              if (activeTab === 'customers') fetchCustomers()
+            }}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
           >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            Refresh
+            <RefreshCw size={13} className={loading ? 'animate-spin text-rose-400' : ''} />
+            Refresh Data
           </button>
           <button
             onClick={() => {
               signOut()
-              toast.success('Signed out of Owner Admin')
+              toast.success('Signed out from Master Admin')
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 transition-all"
           >
-            <LogOut size={13} />
-            Exit Portal
+            Sign Out
           </button>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
-        {/* Real-Time Password Lockout & Reset Center Banner */}
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+        {/* Security Lockout Alerts Banner (if any) */}
         {alerts.length > 0 && (
-          <div className="bg-gradient-to-r from-rose-950/80 via-slate-900 to-rose-950/80 border-2 border-rose-500/40 rounded-2xl p-5 shadow-xl animate-fade-in">
-            <div className="flex items-center justify-between mb-3 border-b border-rose-800/40 pb-2.5">
-              <div className="flex items-center gap-2 text-rose-400">
-                <ShieldAlert size={20} className="animate-pulse" />
-                <h2 className="text-sm font-bold uppercase tracking-wide">
-                  Password Lockout Alerts & Reset Requests ({alerts.length})
-                </h2>
-              </div>
-              <span className="text-xs text-rose-300/80">
-                Immediate 1-Click Default Restore Available
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {alerts.map(alert => (
-                <div key={alert.id} className="p-3.5 rounded-xl bg-slate-950/80 border border-rose-800/60 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-md bg-rose-500/20 text-rose-400 font-bold text-[11px] flex items-center justify-center">
-                        {alert.shop_id.toString().padStart(2, '0')}
-                      </span>
-                      <p className="font-semibold text-xs text-white">{alert.shop_name}</p>
-                    </div>
-                    <p className="text-[11px] text-rose-300 mt-1">
-                      {alert.is_locked ? 'Locked (5 failed attempts)' : `${alert.failed_attempts} failed attempts`}
-                      {alert.lock_reason === 'RESET_REQUESTED_BY_SHOP' && ' • Reset Requested!'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handle1ClickDefaultReset(alert.shop_id)}
-                    disabled={resettingDefaultId === alert.shop_id}
-                    className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/30 transition-all disabled:opacity-50"
-                  >
-                    {resettingDefaultId === alert.shop_id ? 'Resetting…' : 'Reset to Default'}
-                  </button>
+          <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800/80 shadow-lg shadow-rose-950/50">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-rose-600 text-white">
+                  <ShieldCheck size={20} />
                 </div>
-              ))}
+                <div>
+                  <h3 className="text-sm font-bold text-rose-200">
+                    Security Alerts: {alerts.length} {alerts.length === 1 ? 'Shop Account Locked' : 'Shop Accounts Locked'}
+                  </h3>
+                  <p className="text-xs text-rose-300/80 mt-0.5">
+                    The following shops have exceeded 5 failed password attempts or requested a Master Admin password reset:
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {alerts.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-900/60 border border-rose-700 text-xs">
+                        <span className="font-bold text-white">Shop {a.shop_id.toString().padStart(2, '0')}: {a.shop_name}</span>
+                        <span className="text-[10px] text-rose-300 font-mono">({a.failed_attempts} fails)</span>
+                        <button
+                          onClick={() => handle1ClickDefaultReset(a.shop_id)}
+                          className="ml-1 px-2 py-0.5 rounded-lg bg-white text-rose-900 font-bold text-[10px] hover:bg-rose-100 transition-colors"
+                        >
+                          Reset Default Pwd
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* KPI Grid – 3 Interactive Cards with Clickable Drill-Downs */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Card 1: Total Food Court Sales */}
-          <div
-            onClick={() => setActiveTab('shops')}
-            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
-            title="Click to view 18-Shops Leaderboard & Sales breakdown"
-          >
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
-                Total Food Court Sales
-              </span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-extrabold text-sm">
-                ₹
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold text-white tracking-tight">
-              ₹{(t?.total_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
-              <span className="text-emerald-400 font-medium flex items-center gap-1">
-                <ArrowUpRight size={13} /> Today: ₹{(t?.today_sales || 0).toLocaleString('en-IN')}
-              </span>
-              <span className="text-slate-400 font-medium">
-                {(t?.total_transactions || 0).toLocaleString('en-IN')} completed orders
-              </span>
-            </div>
+        {/* Global Statistics Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <p className="text-xs text-slate-400 font-medium">Total Food Court Sales</p>
+            <p className="text-2xl font-black text-white mt-1">₹{(t?.total_sales || 0).toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-emerald-400 mt-0.5">₹{(t?.today_sales || 0).toLocaleString('en-IN')} today</p>
           </div>
-
-          {/* Card 2: Unique Customers */}
-          <div
-            onClick={() => {
-              setActiveTab('customers')
-              setCustomerMode('customer')
-              setCustomerSearch('')
-              setSelectedShopFilter('')
-              fetchCustomers('customer', '', '')
-            }}
-            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
-            title="Click to view Customers & Wallets Explorer"
-          >
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
-                Unique Customers
-              </span>
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                <Users size={16} />
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold text-white tracking-tight">
-              {(t?.unique_customers || 0).toLocaleString('en-IN')}
-            </p>
-            <div className="text-[11px] text-indigo-300 mt-2.5 pt-2 border-t border-slate-800/80">
-              {t?.total_wallets || 0} active wallets across food court
-            </div>
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <p className="text-xs text-slate-400 font-medium">Completed Orders</p>
+            <p className="text-2xl font-black text-white mt-1">{(t?.total_transactions || 0).toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{t?.today_transactions || 0} today</p>
           </div>
-
-          {/* Card 3: Total Cashback Available (renamed from Outstanding Liability) */}
-          <div
-            onClick={() => {
-              setActiveTab('customers')
-            }}
-            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
-            title="Click to explore Cashback Wallets"
-          >
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
-                Total Cashback Available
-              </span>
-              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Sparkles size={16} />
-              </div>
-            </div>
-            <p className="text-3xl font-extrabold text-amber-400 tracking-tight">
-              ₹{(t?.total_wallet_liability || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-            <div className="text-[11px] text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
-              Issued: ₹{(t?.total_cashback_issued || 0).toLocaleString('en-IN')} | Redeemed: ₹{(t?.total_cashback_redeemed || 0).toLocaleString('en-IN')}
-            </div>
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <p className="text-xs text-slate-400 font-medium">Unique Customers</p>
+            <p className="text-2xl font-black text-white mt-1">{(t?.unique_customers || 0).toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-indigo-400 mt-0.5">{t?.total_wallets || 0} active shop wallets</p>
+          </div>
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <p className="text-xs text-slate-400 font-medium">Total Cashback Liability</p>
+            <p className="text-2xl font-black text-amber-400 mt-1">₹{(t?.total_wallet_liability || 0).toLocaleString('en-IN')}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">₹{(t?.total_cashback_redeemed || 0).toLocaleString('en-IN')} redeemed</p>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('shops')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'shops'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white'
-              }`}
-            >
-              18 Shops Leaderboard & Passwords
-            </button>
-            <button
-              onClick={() => setActiveTab('customers')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'customers'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white'
-              }`}
-            >
-              Customers & Wallets Explorer
-            </button>
-            <button
-              onClick={() => setActiveTab('categories')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'categories'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white'
-              }`}
-            >
-              Category Performance
-            </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'analytics'
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-slate-900 text-slate-400 hover:text-white'
-              }`}
-            >
-              Peak Hours & Retention
-            </button>
-          </div>
-          <span className="text-xs text-slate-500 hidden md:inline">Live Cloudflare D1 Sync</span>
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-800 space-x-2">
+          <button
+            onClick={() => setActiveTab('shops')}
+            className={`py-3 px-4 font-bold text-xs rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === 'shops'
+                ? 'border-rose-500 text-rose-400 bg-slate-900/60'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Store size={15} />
+            18 Food Court Shops
+          </button>
+          <button
+            onClick={() => setActiveTab('customers')}
+            className={`py-3 px-4 font-bold text-xs rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === 'customers'
+                ? 'border-rose-500 text-rose-400 bg-slate-900/60'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users size={15} />
+            Customers & Wallets Explorer
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`py-3 px-4 font-bold text-xs rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === 'categories'
+                ? 'border-rose-500 text-rose-400 bg-slate-900/60'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Categories Breakdown
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`py-3 px-4 font-bold text-xs rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+              activeTab === 'analytics'
+                ? 'border-rose-500 text-rose-400 bg-slate-900/60'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Traffic & Rush Hours
+          </button>
         </div>
 
         {/* ─── TAB 1: 18 SHOPS LEADERBOARD & MANAGEMENT ─── */}
@@ -722,7 +709,6 @@ export default function OwnerPortalPage() {
                           onClick={() => handleOpenEdit(s)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
                         >
-                          <Edit2 size={11} />
                           Manage
                         </button>
                       </td>
@@ -743,7 +729,6 @@ export default function OwnerPortalPage() {
                 <button
                   onClick={() => {
                     setCustomerMode('customer')
-                    setCustomersData([])
                     fetchCustomers('customer', selectedShopFilter, customerSearch)
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -757,7 +742,6 @@ export default function OwnerPortalPage() {
                 <button
                   onClick={() => {
                     setCustomerMode('shop')
-                    setCustomersData([])
                     fetchCustomers('shop', selectedShopFilter, customerSearch)
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -805,8 +789,8 @@ export default function OwnerPortalPage() {
                 </button>
               </div>
 
-              {/* Shop Filter (for Shop Mode) */}
-              <div className="flex items-center gap-2">
+              {/* Action Buttons & Shop Filter */}
+              <div className="flex items-center gap-2 flex-wrap">
                 <select
                   value={selectedShopFilter}
                   onChange={e => {
@@ -823,6 +807,14 @@ export default function OwnerPortalPage() {
                     </option>
                   ))}
                 </select>
+
+                <button
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/25 transition-all"
+                >
+                  <UserPlus size={13} />
+                  + Add Customer
+                </button>
 
                 <button
                   onClick={exportCustomersToExcel}
@@ -843,7 +835,7 @@ export default function OwnerPortalPage() {
                 </div>
               ) : customersData.length === 0 ? (
                 <div className="py-16 text-center text-slate-400 text-xs">
-                  No customer records found matching search filters.
+                  No customer records found matching current filters.
                 </div>
               ) : customerMode === 'customer' ? (
                 /* Mode A Table: Grouped by Mobile */
@@ -852,8 +844,9 @@ export default function OwnerPortalPage() {
                     <div className="col-span-3">Customer & Mobile</div>
                     <div className="col-span-2 text-right">Combined Balance</div>
                     <div className="col-span-2 text-right">Total Purchases</div>
-                    <div className="col-span-2 text-center">Shops Visited</div>
-                    <div className="col-span-2 text-right">Last Activity</div>
+                    <div className="col-span-1 text-center">Shops</div>
+                    <div className="col-span-2 text-center">Source</div>
+                    <div className="col-span-1 text-right">Activity</div>
                     <div className="col-span-1 text-center">Breakdown</div>
                   </div>
 
@@ -877,12 +870,25 @@ export default function OwnerPortalPage() {
                           <div className="col-span-2 text-right text-slate-300">
                             ₹{(c.total_combined_purchases || 0).toFixed(2)}
                           </div>
-                          <div className="col-span-2 text-center">
+                          <div className="col-span-1 text-center">
                             <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                              {c.total_shops_visited} {c.total_shops_visited === 1 ? 'shop' : 'shops'}
+                              {c.total_shops_visited}
                             </span>
                           </div>
-                          <div className="col-span-2 text-right text-slate-400 text-[11px]">
+                          <div className="col-span-2 text-center">
+                            {c.added_by === 'Master Admin' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                <ShieldCheck size={11} />
+                                Master Admin
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                <Store size={11} />
+                                Shop
+                              </span>
+                            )}
+                          </div>
+                          <div className="col-span-1 text-right text-slate-400 text-[11px]">
                             {c.most_recent_activity ? new Date(c.most_recent_activity).toLocaleDateString('en-IN') : 'N/A'}
                           </div>
                           <div className="col-span-1 text-center text-slate-400">
@@ -911,7 +917,12 @@ export default function OwnerPortalPage() {
                                     Purchased: ₹{s.total_purchases.toFixed(2)} | Earned: ₹{s.cashback_earned.toFixed(2)}
                                   </p>
                                   <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500">
-                                    <span>Last: {s.last_purchase_date ? new Date(s.last_purchase_date).toLocaleDateString('en-IN') : 'N/A'}</span>
+                                    <span>
+                                      Source:{' '}
+                                      <span className={s.added_by === 'Master Admin' ? 'text-purple-300 font-bold' : 'text-slate-400'}>
+                                        {s.added_by || 'Shop'}
+                                      </span>
+                                    </span>
                                     {s.recent_category && (
                                       <span className="text-amber-400 font-medium">{s.recent_category}</span>
                                     )}
@@ -936,6 +947,7 @@ export default function OwnerPortalPage() {
                         <th className="py-3 px-4">Mobile</th>
                         <th className="py-3 px-4">Wallet Balance</th>
                         <th className="py-3 px-4">Total Purchases</th>
+                        <th className="py-3 px-4">Added By / Source</th>
                         <th className="py-3 px-4">Recent Category</th>
                         <th className="py-3 px-4">Last Activity</th>
                       </tr>
@@ -953,6 +965,19 @@ export default function OwnerPortalPage() {
                           </td>
                           <td className="py-3 px-4 text-slate-300">
                             ₹{(c.total_purchases || 0).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-4">
+                            {c.added_by === 'Master Admin' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                <ShieldCheck size={11} />
+                                Master Admin
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                                <Store size={11} />
+                                Shop {c.shop_id ? c.shop_id.toString().padStart(2, '0') : '18'}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-amber-400 font-medium">
                             {c.recent_category || 'General Service'}
@@ -1061,6 +1086,129 @@ export default function OwnerPortalPage() {
         )}
       </main>
 
+      {/* ─── ADD CUSTOMER MODAL (Master Admin) ─── */}
+      {showAddCustomerModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                  <UserPlus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Add Customer directly</h3>
+                  <p className="text-[11px] text-slate-400">Added with Source: <span className="text-purple-300 font-semibold">Master Admin</span></p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCustomerModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCustomerSubmit} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Customer Name <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter customer name"
+                    value={newCustName}
+                    onChange={e => setNewCustName(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Mobile Number (10 digits) <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    placeholder="9876543210"
+                    value={newCustMobile}
+                    onChange={e => setNewCustMobile(e.target.value.replace(/\D/g, ''))}
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 font-mono text-xs focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Target Shop
+                </label>
+                <div className="relative">
+                  <Store size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  <select
+                    value={newCustShopId}
+                    onChange={e => setNewCustShopId(parseInt(e.target.value, 10))}
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    {(overview?.shops || []).map(s => (
+                      <option key={s.id} value={s.id}>
+                        Shop {s.id.toString().padStart(2, '0')}: {s.name}
+                      </option>
+                    ))}
+                    {(!overview?.shops || overview.shops.length === 0) && (
+                      <option value={18}>Shop 18: Xerox & Printing Shop</option>
+                    )}
+                  </select>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">Default: Shop 18 (Xerox & Printing Shop)</p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-300 block mb-1">
+                  Initial Cashback Balance (₹, optional)
+                </label>
+                <div className="relative">
+                  <Wallet size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newCustBalance}
+                    onChange={e => setNewCustBalance(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white"
+                  disabled={addingCustomer}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addingCustomer}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-600/30 disabled:opacity-50"
+                >
+                  {addingCustomer ? 'Adding Customer…' : 'Add Customer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Edit Shop Modal */}
       {editingShop && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1136,3 +1284,4 @@ export default function OwnerPortalPage() {
     </div>
   )
 }
+

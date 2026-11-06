@@ -91,7 +91,7 @@ export default function LoginPage() {
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     if (isCurrentShopDisabled) {
-      toast.error('This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.')
+      toast.error('This shop has been disabled by the Master Admin. Please contact the Master Admin to reopen.')
       return
     }
     if (!password) {
@@ -101,10 +101,10 @@ export default function LoginPage() {
 
     const res = await signIn(currentShop.login, password)
     if (res.error) {
-      if (res.shop_disabled || res.error.toLowerCase().includes('disabled by the food court owner')) {
+      if (res.shop_disabled || res.error.toLowerCase().includes('disabled by the master admin') || res.error.toLowerCase().includes('disabled by the food court owner')) {
         setShopsStatus(prev => ({ ...prev, [currentShop.id]: false }))
-        setErrors({ password: 'This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.' })
-        toast.error('This shop has been disabled by the Food Court Owner.')
+        setErrors({ password: 'This shop has been disabled by the Master Admin. Please contact the Master Admin to reopen.' })
+        toast.error('This shop has been disabled by the Master Admin.')
       } else if (res.is_locked || res.error.toLowerCase().includes('locked')) {
         setIsLocked(true)
         setRemainingAttempts(0)
@@ -135,7 +135,7 @@ export default function LoginPage() {
       toast.error(error.message || 'Failed to submit reset request')
     } else {
       setUnlockRequested(true)
-      toast.success('Food Court Owner has been alerted to reset your password!')
+      toast.success('Master Admin has been alerted to reset your password!')
     }
   }
 
@@ -175,17 +175,17 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Shop Disabled by Owner Alert Box */}
+          {/* Shop Disabled by Master Admin Alert Box */}
           {isCurrentShopDisabled && (
             <div className="mb-5 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-900 text-left animate-shake shadow-md">
               <div className="flex items-start gap-2.5">
                 <Store size={20} className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <h3 className="text-xs font-extrabold text-rose-800 dark:text-rose-200 uppercase tracking-wide">
-                    Shop Closed by Owner
+                    Shop Closed by Master Admin
                   </h3>
                   <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed font-semibold">
-                    This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.
+                    This shop has been disabled by the Master Admin. Please contact the Master Admin to reopen.
                   </p>
                 </div>
               </div>
@@ -202,13 +202,13 @@ export default function LoginPage() {
                     Terminal Locked (5 Failed Attempts)
                   </h3>
                   <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">
-                    Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default pattern.
+                    Account locked after 5 wrong password attempts. Please contact the Master Admin to reset your password to the default pattern.
                   </p>
 
                   {unlockRequested ? (
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60 px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
                       <CheckCircle2 size={14} />
-                      Reset request sent to Food Court Owner!
+                      Reset request sent to Master Admin!
                     </div>
                   ) : (
                     <button
@@ -225,7 +225,7 @@ export default function LoginPage() {
                       ) : (
                         <>
                           <Send size={12} />
-                          Request Owner Password Reset
+                          Request Master Admin Password Reset
                         </>
                       )}
                     </button>
@@ -264,7 +264,7 @@ export default function LoginPage() {
                     const isDisabled = shopsStatus[shop.id] === false
                     return (
                       <option key={shop.id} value={shop.id} className={isDisabled ? 'text-rose-500 font-semibold' : ''}>
-                        Shop {shop.id.toString().padStart(2, '0')} – {shop.name} {isDisabled ? '(Closed by Owner)' : ''}
+                        Shop {shop.id.toString().padStart(2, '0')} – {shop.name} {isDisabled ? '(Closed by Master Admin)' : ''}
                       </option>
                     )
                   })}
@@ -293,7 +293,7 @@ export default function LoginPage() {
                     if (errors.password) setErrors({})
                   }}
                   className={`form-input pl-10 pr-10 ${errors.password ? 'border-rose-400 dark:border-rose-500' : ''}`}
-                  placeholder={isCurrentShopDisabled ? 'Shop Closed by Owner' : '••••••••'}
+                  placeholder={isCurrentShopDisabled ? 'Shop Closed by Master Admin' : '••••••••'}
                   disabled={loading || isLocked || isCurrentShopDisabled}
                   autoFocus
                 />
@@ -323,7 +323,7 @@ export default function LoginPage() {
                   Authenticating Shop…
                 </span>
               ) : isCurrentShopDisabled ? (
-                'Shop Closed by Owner'
+                'Shop Closed by Master Admin'
               ) : isLocked ? (
                 'Terminal Locked'
               ) : (

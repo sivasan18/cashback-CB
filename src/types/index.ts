@@ -32,6 +32,7 @@ export interface Customer {
   cashback_earned: number
   cashback_redeemed: number
   cashback_balance: number
+  added_by?: string
   created_at: string
   updated_at: string
 }

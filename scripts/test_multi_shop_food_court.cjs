@@ -220,17 +220,17 @@ if (totalSales > 0 && shopBreakdown.length === 18) {
 }
 
 // ─── TEST 9: Secret Route Secrecy Verification ──────────────────────────────
-console.log('\n--- TEST 9: Secrecy Audit of /owner-admin ---');
+console.log('\n--- TEST 9: Secrecy Audit of /master-admin ---');
 const appLayoutCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'components', 'layout', 'AppLayout.tsx'), 'utf8');
 const loginPageCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'pages', 'LoginPage.tsx'), 'utf8');
 const appCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'App.tsx'), 'utf8');
 
-const leakInNav = appLayoutCode.includes('owner-admin') || appLayoutCode.includes('owner-vista-18') || appLayoutCode.includes('sivar75@gmail.com');
-const leakInLogin = loginPageCode.includes('owner-admin') || loginPageCode.includes('owner-vista-18') || loginPageCode.includes('sivar75@gmail.com');
-const routeExists = appCode.includes('/owner-admin') && appCode.includes('OwnerPortalPage');
+const leakInNav = appLayoutCode.includes('master-admin') || appLayoutCode.includes('owner-admin') || appLayoutCode.includes('owner-vista-18') || appLayoutCode.includes('sivar75@gmail.com');
+const leakInLogin = loginPageCode.includes('master-admin') || loginPageCode.includes('owner-admin') || loginPageCode.includes('owner-vista-18') || loginPageCode.includes('sivar75@gmail.com');
+const routeExists = appCode.includes('/master-admin') && appCode.includes('MasterAdminPage') && !appCode.includes('/owner-admin') && !appCode.includes('/owner-vista-18');
 
 if (!leakInNav && !leakInLogin && routeExists) {
-  console.log('✅ TEST 9 PASSED: /owner-admin is 100% hidden. Zero leaks in navigation, sidebar, or login page.');
+  console.log('✅ TEST 9 PASSED: /master-admin is 100% hidden. Zero leaks in navigation, sidebar, or login page.');
 } else {
   console.error('❌ TEST 9 FAILED: Secrecy audit failed', { leakInNav, leakInLogin, routeExists });
   process.exit(1);

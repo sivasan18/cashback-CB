@@ -278,10 +278,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         return json({ error: 'Invalid login credentials' }, 401)
       }
 
-      // Check if shop has been disabled by Food Court Owner
+      // Check if shop has been disabled by Master Admin
       if (user.shop_id && user.shop_is_active === 0) {
         return json({
-          error: 'This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.',
+          error: 'This shop has been disabled by the Master Admin. Please contact the Master Admin to reopen.',
           shop_disabled: true,
           shop_id: user.shop_id,
           login_id: user.email
@@ -291,7 +291,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       // Check if account is locked due to 5 failed attempts
       if (user.is_locked === 1) {
         return json({
-          error: 'Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default password.',
+          error: 'Account locked after 5 wrong password attempts. Please contact the Master Admin to reset your password to the default password.',
           is_locked: true,
           shop_id: user.shop_id,
           login_id: user.email,
@@ -326,7 +326,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           `).bind(newFailed, user.id).run()
 
           return json({
-            error: 'Account locked after 5 wrong password attempts. Please contact the Food Court Owner to reset your password to the default password.',
+            error: 'Account locked after 5 wrong password attempts. Please contact the Master Admin to reset your password to the default password.',
             is_locked: true,
             remaining_attempts: 0,
             shop_id: user.shop_id,
@@ -413,7 +413,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
 
       return json({
         success: true,
-        message: 'Password reset request has been logged. The Food Court Owner has been notified.'
+        message: 'Password reset request has been logged. The Master Admin has been notified.'
       })
     }
 
@@ -786,8 +786,9 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
               round(sum(cashback_earned), 2) as total_combined_earned,
               round(sum(cashback_redeemed), 2) as total_combined_redeemed,
               round(sum(total_purchases), 2) as total_combined_purchases,
-              count(DISTINCT shop_id) as total_shops_visited,
-              max(updated_at) as most_recent_activity
+              count(DISTINCT coalesce(shop_id, 18)) as total_shops_visited,
+              max(updated_at) as most_recent_activity,
+              max(coalesce(added_by, 'Shop')) as added_by
             FROM customers
             WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
           `
@@ -808,9 +809,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
             customerList.map(async (c: any) => {
               const { results: visitedShops } = await env.DB.prepare(`
                 SELECT
-                  c.shop_id,
-                  s.name as shop_name,
-                  s.icon as shop_icon,
+                  coalesce(c.shop_id, 18) as shop_id,
+                  coalesce(s.name, 'Shop 18 - Xerox & Printing Shop') as shop_name,
+                  coalesce(s.icon, '🖨️') as shop_icon,
+                  coalesce(c.added_by, 'Shop') as added_by,
                   c.cashback_balance,
                   c.cashback_earned,
                   c.cashback_redeemed,
@@ -819,11 +821,11 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
                   (
                     SELECT service_category
                     FROM transactions
-                    WHERE customer_id = c.id AND shop_id = c.shop_id
+                    WHERE customer_id = c.id AND shop_id = coalesce(c.shop_id, 18)
                     ORDER BY created_at DESC LIMIT 1
                   ) as recent_category
                 FROM customers c
-                JOIN shops s ON c.shop_id = s.id
+                LEFT JOIN shops s ON coalesce(c.shop_id, 18) = s.id
                 WHERE c.mobile = ?
                 ORDER BY s.id ASC
               `).bind(c.mobile).all() as any
@@ -845,9 +847,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           let query = `
             SELECT
               c.id,
-              c.shop_id,
-              s.name as shop_name,
-              s.icon as shop_icon,
+              coalesce(c.shop_id, 18) as shop_id,
+              coalesce(s.name, 'Shop 18 - Xerox & Printing Shop') as shop_name,
+              coalesce(s.icon, '🖨️') as shop_icon,
+              coalesce(c.added_by, 'Shop') as added_by,
               c.name,
               c.mobile,
               c.cashback_balance,
@@ -859,17 +862,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
               (
                 SELECT service_category
                 FROM transactions
-                WHERE customer_id = c.id AND shop_id = c.shop_id
+                WHERE customer_id = c.id AND shop_id = coalesce(c.shop_id, 18)
                 ORDER BY created_at DESC LIMIT 1
               ) as recent_category
             FROM customers c
-            JOIN shops s ON c.shop_id = s.id
+            LEFT JOIN shops s ON coalesce(c.shop_id, 18) = s.id
             WHERE c.name != '[Deleted Customer]' AND c.mobile NOT LIKE 'DEL%'
           `
           const params: any[] = []
 
           if (shopFilter && !isNaN(parseInt(shopFilter, 10))) {
-            query += ' AND c.shop_id = ?'
+            query += ' AND coalesce(c.shop_id, 18) = ?'
             params.push(parseInt(shopFilter, 10))
           }
 
@@ -888,6 +891,106 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
             mode: 'shop'
           })
         }
+      }
+
+      if (pathname === '/owner/customers' && method === 'POST') {
+        const body = await request.json().catch(() => ({})) as any
+        const { name, mobile, shop_id, initial_balance } = body
+
+        if (!name || typeof name !== 'string' || !name.trim()) {
+          return error('Customer name is required', 400)
+        }
+        const cleanMobile = (mobile || '').trim().replace(/\D/g, '')
+        if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+          return error('A valid 10-digit mobile number starting with 6-9 is required', 400)
+        }
+
+        const targetShopId = shop_id && !isNaN(parseInt(shop_id, 10)) ? parseInt(shop_id, 10) : 18
+        const balance = initial_balance && !isNaN(parseFloat(initial_balance)) ? Math.max(0, parseFloat(initial_balance)) : 0.0
+
+        // Check if customer already exists for targetShopId
+        const existing = await env.DB.prepare(
+          'SELECT id, cashback_balance, cashback_earned FROM customers WHERE mobile = ? AND coalesce(shop_id, 18) = ?'
+        ).bind(cleanMobile, targetShopId).first() as any
+
+        const now = new Date().toISOString()
+        let customerId: string
+
+        if (existing) {
+          customerId = existing.id
+          if (balance > 0) {
+            const newBal = Math.round((existing.cashback_balance + balance) * 100) / 100
+            const newEarned = Math.round((existing.cashback_earned + balance) * 100) / 100
+            const ledgerId = crypto.randomUUID()
+
+            await env.DB.batch([
+              env.DB.prepare(`
+                UPDATE customers
+                SET cashback_balance = ?,
+                    cashback_earned = ?,
+                    updated_at = ?
+                WHERE id = ?
+              `).bind(newBal, newEarned, now, customerId),
+              env.DB.prepare(`
+                INSERT INTO cashback_ledger (id, shop_id, customer_id, credit, debit, balance_after, description, created_at)
+                VALUES (?, ?, ?, ?, 0.0, ?, 'Initial cashback credited by Master Admin', ?)
+              `).bind(ledgerId, targetShopId, customerId, balance, newBal, now)
+            ])
+          }
+        } else {
+          customerId = crypto.randomUUID()
+          const statements = [
+            env.DB.prepare(`
+              INSERT INTO customers (
+                id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, added_by, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, 0.0, ?, 0.0, ?, 'Master Admin', ?, ?)
+            `).bind(customerId, targetShopId, name.trim(), cleanMobile, balance, balance, now, now)
+          ]
+
+          if (balance > 0) {
+            const ledgerId = crypto.randomUUID()
+            statements.push(
+              env.DB.prepare(`
+                INSERT INTO cashback_ledger (id, shop_id, customer_id, credit, debit, balance_after, description, created_at)
+                VALUES (?, ?, ?, ?, 0.0, ?, 'Initial cashback credited by Master Admin', ?)
+              `).bind(ledgerId, targetShopId, customerId, balance, balance, now)
+            )
+          }
+
+          await env.DB.batch(statements)
+        }
+
+        // Add admin audit log
+        const auditId = crypto.randomUUID()
+        await env.DB.prepare(`
+          INSERT INTO admin_audit_logs (id, shop_id, action, performed_by, details, created_at)
+          VALUES (?, ?, 'CUSTOMER_ADDED_BY_MASTER_ADMIN', 'Master Admin', ?, ?)
+        `).bind(
+          auditId,
+          targetShopId,
+          JSON.stringify({
+            customer_id: customerId,
+            name: name.trim(),
+            mobile: cleanMobile,
+            shop_id: targetShopId,
+            initial_balance: balance,
+            added_by: 'Master Admin'
+          }),
+          now
+        ).run()
+
+        const created = await env.DB.prepare(`
+          SELECT c.*, coalesce(s.name, 'Shop ' || coalesce(c.shop_id, 18)) as shop_name, coalesce(s.icon, '🏪') as shop_icon
+          FROM customers c
+          LEFT JOIN shops s ON coalesce(c.shop_id, 18) = s.id
+          WHERE c.id = ?
+        `).bind(customerId).first()
+
+        return json({
+          success: true,
+          message: 'Customer added successfully by Master Admin',
+          data: created
+        }, 201)
       }
 
       if (pathname === '/owner/shops' && method === 'GET') {

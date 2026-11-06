@@ -12,7 +12,7 @@ import WalletLookupPage from '@/pages/WalletLookupPage'
 import ReportsPage from '@/pages/ReportsPage'
 import SettingsPage from '@/pages/SettingsPage'
 import CustomerDisplayPage from '@/pages/CustomerDisplayPage'
-import OwnerPortalPage from '@/pages/OwnerPortalPage'
+import MasterAdminPage from '@/pages/MasterAdminPage'
 
 import { useThemeStore } from '@/store/themeStore'
 
@@ -46,8 +46,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/customer-display" element={<CustomerDisplayPage />} />
-        <Route path="/owner-admin" element={<OwnerPortalPage />} />
-        <Route path="/owner-vista-18" element={<Navigate to="/owner-admin" replace />} />
+        <Route path="/master-admin" element={<MasterAdminPage />} />
         <Route
           path="/"
           element={

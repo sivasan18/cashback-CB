@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS customers (
   cashback_earned   REAL NOT NULL DEFAULT 0.0 CHECK (cashback_earned >= 0),
   cashback_redeemed REAL NOT NULL DEFAULT 0.0 CHECK (cashback_redeemed >= 0),
   cashback_balance  REAL NOT NULL DEFAULT 0.0 CHECK (cashback_balance >= 0),
+  added_by          TEXT DEFAULT 'Shop',
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE(shop_id, mobile)

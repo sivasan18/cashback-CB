@@ -295,10 +295,10 @@ let loginAllowed = true;
 let loginError = '';
 if (disabledShop.shop_id && disabledShop.shop_is_active === 0) {
   loginAllowed = false;
-  loginError = 'This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.';
+  loginError = 'This shop has been disabled by the Master Admin. Please contact the Master Admin to reopen.';
 }
 
-if (loginAllowed || !loginError.includes('disabled by the Food Court Owner')) {
+if (loginAllowed || (!loginError.includes('disabled by the Master Admin') && !loginError.includes('disabled by the Food Court Owner'))) {
   console.error("❌ TEST 10 FAILED: Disabled shop was allowed to log in!", { loginAllowed, loginError });
   process.exit(1);
 }
@@ -311,15 +311,15 @@ if (reopenedShop.is_active !== 1) {
   console.error("❌ TEST 10 FAILED: Could not reopen shop 1");
   process.exit(1);
 }
-console.log('✅ TEST 10 PASSED: Disabled shop login rejection and owner reopening verified.');
+console.log('✅ TEST 10 PASSED: Disabled shop login rejection and Master Admin reopening verified.');
 
 // ─── TEST 11: Customer Directory Mode B (All 18 Shops) Immediate Listing ───────
-console.log('\n--- TEST 11: Verifying Mode B All 18 Shops Default Listing ---');
+console.log('\n--- TEST 11: Verifying Mode B All 18 Shops Default Listing & LEFT JOIN ---');
 const modeBAllShops = query(`
   SELECT
-    c.id, c.shop_id, s.name as shop_name, c.name, c.mobile, c.cashback_balance
+    c.id, coalesce(c.shop_id, 18) as shop_id, coalesce(s.name, 'Shop 18') as shop_name, c.name, c.mobile, c.cashback_balance, coalesce(c.added_by, 'Shop') as added_by
   FROM customers c
-  JOIN shops s ON c.shop_id = s.id
+  LEFT JOIN shops s ON coalesce(c.shop_id, 18) = s.id
   WHERE c.name != '[Deleted Customer]' AND c.mobile NOT LIKE 'DEL%'
   ORDER BY c.updated_at DESC;
 `);
@@ -331,6 +331,50 @@ if (modeBAllShops.length === 0) {
 const shopsRepresented = new Set(modeBAllShops.map(c => c.shop_id));
 console.log(`  Mode B returned ${modeBAllShops.length} active customer records across ${shopsRepresented.size} different shops.`);
 console.log('✅ TEST 11 PASSED: Mode B All 18 Shops immediately lists all registered customers without requiring manual search.');
+
+// ─── TEST 12: Master Admin Customer Creation & added_by Column ─────────────────
+console.log('\n--- TEST 12: Verifying Direct Customer Creation by Master Admin ---');
+const testCustId = 'test-cust-master-admin-01';
+const testMobile = '9876500001';
+const testBalance = 50.0;
+const testShopId = 18;
+
+// Clean up if existing
+runSql(`DELETE FROM cashback_ledger WHERE customer_id = '${testCustId}';`);
+runSql(`DELETE FROM customers WHERE id = '${testCustId}' OR mobile = '${testMobile}';`);
+
+runSql(`
+  INSERT INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, added_by, created_at, updated_at)
+  VALUES ('${testCustId}', ${testShopId}, 'Master Admin Test User', '${testMobile}', 0.0, ${testBalance}, 0.0, ${testBalance}, 'Master Admin', datetime('now'), datetime('now'));
+`);
+
+runSql(`
+  INSERT INTO cashback_ledger (id, shop_id, customer_id, credit, debit, balance_after, description, created_at)
+  VALUES ('ledger-master-01', ${testShopId}, '${testCustId}', ${testBalance}, 0.0, ${testBalance}, 'Initial cashback credited by Master Admin', datetime('now'));
+`);
+
+const insertedCust = query(`
+  SELECT c.*, coalesce(s.name, 'Shop 18') as shop_name
+  FROM customers c
+  LEFT JOIN shops s ON coalesce(c.shop_id, 18) = s.id
+  WHERE c.id = '${testCustId}';
+`)[0];
+
+if (!insertedCust || insertedCust.added_by !== 'Master Admin' || insertedCust.cashback_balance !== testBalance) {
+  console.error("❌ TEST 12 FAILED: Master Admin created customer verification failed", insertedCust);
+  process.exit(1);
+}
+
+const ledgerEntry = query(`SELECT * FROM cashback_ledger WHERE customer_id = '${testCustId}';`)[0];
+if (!ledgerEntry || ledgerEntry.credit !== testBalance) {
+  console.error("❌ TEST 12 FAILED: Initial cashback ledger entry verification failed", ledgerEntry);
+  process.exit(1);
+}
+
+// Clean up
+runSql(`DELETE FROM cashback_ledger WHERE customer_id = '${testCustId}';`);
+runSql(`DELETE FROM customers WHERE id = '${testCustId}';`);
+console.log('✅ TEST 12 PASSED: Direct customer creation with added_by = "Master Admin" and initial balance ledger verified.');
 
 console.log('\n==============================================================================');
 console.log('🎉 ALL SECURITY LOCKOUT, EXPLORER, AND DATA ISOLATION TESTS PASSED!');

@@ -107,7 +107,7 @@ async function generateSeed() {
   // 4. Customers (Shop 18 for existing archive data)
   sqlStatements.push('-- 4. Customers (Shop 18 Data)');
   for (const c of data.customers) {
-    sqlStatements.push(`INSERT OR REPLACE INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, created_at, updated_at) VALUES (${escapeSql(c.id)}, 18, ${escapeSql(c.name)}, ${escapeSql(c.mobile)}, ${c.total_purchases || 0}, ${c.cashback_earned || 0}, ${c.cashback_redeemed || 0}, ${c.cashback_balance || 0}, ${escapeSql(c.created_at)}, ${escapeSql(c.updated_at)});`);
+    sqlStatements.push(`INSERT OR REPLACE INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, added_by, created_at, updated_at) VALUES (${escapeSql(c.id)}, 18, ${escapeSql(c.name)}, ${escapeSql(c.mobile)}, ${c.total_purchases || 0}, ${c.cashback_earned || 0}, ${c.cashback_redeemed || 0}, ${c.cashback_balance || 0}, 'Shop', ${escapeSql(c.created_at)}, ${escapeSql(c.updated_at)});`);
   }
   sqlStatements.push('');
 
@@ -125,7 +125,7 @@ async function generateSeed() {
 
   sqlStatements.push('-- 4b. Food Court Tenant Customers (Shops 1..17)');
   for (const c of sampleTenantCustomers) {
-    sqlStatements.push(`INSERT OR REPLACE INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, created_at, updated_at) VALUES ('${c.id}', ${c.shop_id}, ${escapeSql(c.name)}, '${c.mobile}', ${c.total}, ${c.earned}, ${c.redeemed}, ${c.balance}, datetime('now', '-2 days'), datetime('now', '-1 hours'));`);
+    sqlStatements.push(`INSERT OR REPLACE INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, added_by, created_at, updated_at) VALUES ('${c.id}', ${c.shop_id}, ${escapeSql(c.name)}, '${c.mobile}', ${c.total}, ${c.earned}, ${c.redeemed}, ${c.balance}, 'Shop', datetime('now', '-2 days'), datetime('now', '-1 hours'));`);
   }
   sqlStatements.push('');
 

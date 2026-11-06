@@ -387,6 +387,16 @@ export const cloudflareApi = {
         total: number
         mode: string
       }>(`/owner/customers?${qs.toString()}`)
+    },
+    async addCustomer(data: { name: string; mobile: string; shop_id?: number; initial_balance?: number }) {
+      return request<{
+        success: boolean
+        message: string
+        data: any
+      }>('/owner/customers', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      })
     }
   },
 
