@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   qr_payment_method         TEXT NOT NULL DEFAULT 'standard_upi',
   payment_expiry_seconds    INTEGER NOT NULL DEFAULT 300,
   display_timeout_seconds   INTEGER NOT NULL DEFAULT 5,
+  enable_customer_display   INTEGER NOT NULL DEFAULT 1,
   updated_at                TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   UNIQUE(shop_id)
 );

@@ -23,6 +23,7 @@ export default function SettingsPage() {
     qr_payment_method: 'standard_upi' as 'standard_upi' | 'payment_gateway',
     payment_expiry_seconds: 300,
     display_timeout_seconds: 5,
+    enable_customer_display: true,
   })
   const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [catFilter, setCatFilter] = useState('')
@@ -59,6 +60,7 @@ export default function SettingsPage() {
         qr_payment_method: settings.qr_payment_method || 'standard_upi',
         payment_expiry_seconds: settings.payment_expiry_seconds || 300,
         display_timeout_seconds: settings.display_timeout_seconds || 5,
+        enable_customer_display: settings.enable_customer_display !== false && settings.enable_customer_display !== 0,
       })
     }
   }, [settings])
@@ -429,6 +431,30 @@ export default function SettingsPage() {
               <p className="text-xs text-slate-400 mt-1">
                 Delay after transaction completion before returning to Welcome screen (default: 5s)
               </p>
+            </div>
+
+            {/* Customer Display Enabled Toggle */}
+            <div className="sm:col-span-2 flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-dark-800 bg-slate-50 dark:bg-dark-900/60 transition-colors">
+              <div className="space-y-0.5 pr-4">
+                <div className="flex items-center gap-2">
+                  <Monitor size={17} className="text-brand-600 dark:text-brand-400" />
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    Enable Customer Display (Secondary Screen)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Shows the Customer Display button in the bottom-left sidebar to open the live transaction view on a second monitor.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={form.enable_customer_display}
+                  onChange={e => setForm(f => ({ ...f, enable_customer_display: e.target.checked }))}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-dark-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+              </label>
             </div>
           </div>
         </div>

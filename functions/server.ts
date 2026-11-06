@@ -268,7 +268,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
 
       // Query admin_users in D1
       const user = await env.DB.prepare(`
-        SELECT u.*, s.name as shop_name
+        SELECT u.*, s.name as shop_name, s.is_active as shop_is_active
         FROM admin_users u
         LEFT JOIN shops s ON u.shop_id = s.id
         WHERE lower(u.email) = ? OR lower(u.email) = ?
@@ -276,6 +276,16 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
 
       if (!user) {
         return json({ error: 'Invalid login credentials' }, 401)
+      }
+
+      // Check if shop has been disabled by Food Court Owner
+      if (user.shop_id && user.shop_is_active === 0) {
+        return json({
+          error: 'This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.',
+          shop_disabled: true,
+          shop_id: user.shop_id,
+          login_id: user.email
+        }, 403)
       }
 
       // Check if account is locked due to 5 failed attempts
@@ -931,6 +941,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       const existing = await env.DB.prepare('SELECT * FROM shop_settings WHERE shop_id = ?').bind(shopId).first() as any
 
       if (existing) {
+        const enableDisplay = body.enable_customer_display !== undefined
+          ? (body.enable_customer_display ? 1 : 0)
+          : (existing.enable_customer_display ?? 1)
+
         await env.DB.prepare(`
           UPDATE shop_settings SET
             shop_name = ?,
@@ -946,6 +960,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
             qr_payment_method = ?,
             payment_expiry_seconds = ?,
             display_timeout_seconds = ?,
+            enable_customer_display = ?,
             updated_at = datetime("now")
           WHERE shop_id = ?
         `).bind(
@@ -962,17 +977,23 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           body.qr_payment_method ?? existing.qr_payment_method,
           body.payment_expiry_seconds ?? existing.payment_expiry_seconds,
           body.display_timeout_seconds ?? existing.display_timeout_seconds,
+          enableDisplay,
           shopId
         ).run()
       } else {
         const id = crypto.randomUUID()
+        const enableDisplay = body.enable_customer_display !== undefined
+          ? (body.enable_customer_display ? 1 : 0)
+          : 1
+
         await env.DB.prepare(`
           INSERT INTO shop_settings (
             id, shop_id, shop_name, shop_address, contact_number,
             cashback_percentage, minimum_eligible_purchase, currency,
             date_format, time_format, merchant_upi_id, merchant_display_name,
-            qr_payment_method, payment_expiry_seconds, display_timeout_seconds
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            qr_payment_method, payment_expiry_seconds, display_timeout_seconds,
+            enable_customer_display
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           id,
           shopId,
@@ -988,7 +1009,8 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           body.merchant_display_name || 'Smart Cashback',
           body.qr_payment_method || 'standard_upi',
           body.payment_expiry_seconds || 300,
-          body.display_timeout_seconds || 5
+          body.display_timeout_seconds || 5,
+          enableDisplay
         ).run()
       }
 

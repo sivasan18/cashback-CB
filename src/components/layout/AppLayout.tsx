@@ -121,30 +121,32 @@ export default function AppLayout() {
           })}
         </nav>
 
-        {/* Customer Display Launcher in Sidebar */}
-        <div className="px-3 pb-3">
-          <button
-            type="button"
-            onClick={() => {
-              window.open(
-                `/customer-display?shop=${user?.shop_id || 18}`,
-                'smart-cashback-customer-display',
-                'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
-              )
-              toast.success('Customer display opened! Move to your external monitor.')
-            }}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-brand-700 dark:text-brand-300 bg-brand-50 hover:bg-brand-100/80 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 transition-all shadow-sm group"
-            title="Open Customer Display on 2nd monitor"
-          >
-            <div className="flex items-center gap-2.5">
-              <Monitor size={16} className="text-brand-600 dark:text-brand-400 group-hover:scale-110 transition-transform" />
-              <span>Customer Display</span>
-            </div>
-            <span className="text-[10px] bg-brand-600 text-white px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider">
-              2nd Screen
-            </span>
-          </button>
-        </div>
+        {/* Customer Display Launcher in Sidebar (Controlled by Settings toggle) */}
+        {(settings?.enable_customer_display !== false && settings?.enable_customer_display !== 0) && (
+          <div className="px-3 pb-3">
+            <button
+              type="button"
+              onClick={() => {
+                window.open(
+                  `/customer-display?shop=${user?.shop_id || 18}`,
+                  'smart-cashback-customer-display',
+                  'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
+                )
+                toast.success('Customer display opened! Move to your external monitor.')
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold text-brand-700 dark:text-brand-300 bg-brand-50 hover:bg-brand-100/80 dark:bg-brand-950/60 dark:hover:bg-brand-900/60 border border-brand-200 dark:border-brand-800 transition-all shadow-sm group"
+              title="Open Customer Display on 2nd monitor"
+            >
+              <div className="flex items-center gap-2.5">
+                <Monitor size={16} className="text-brand-600 dark:text-brand-400 group-hover:scale-110 transition-transform" />
+                <span>Customer Display</span>
+              </div>
+              <span className="text-[10px] bg-brand-600 text-white px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider">
+                2nd Screen
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Theme Switcher (Light / Dark / System) */}
         <div className="px-3 py-3 border-t border-slate-100 dark:border-dark-800/80">
@@ -230,23 +232,6 @@ export default function AppLayout() {
           </div>
 
           <div className="flex items-center gap-2.5 ml-auto">
-            <button
-              type="button"
-              onClick={() => {
-                window.open(
-                  '/customer-display',
-                  'smart-cashback-customer-display',
-                  'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
-                )
-                toast.success('Customer display opened! Move to your external monitor.')
-              }}
-              className="btn-secondary text-xs px-3.5 py-2 flex items-center gap-1.5 font-bold uppercase tracking-wider text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-800 bg-brand-50/60 dark:bg-brand-950/50"
-              title="Open Customer Display on second monitor"
-            >
-              <Monitor size={15} className="text-brand-600 dark:text-brand-400" />
-              <span>OPEN CUSTOMER DISPLAY</span>
-            </button>
-
             <NavLink
               to="/billing"
               className="btn-primary text-xs px-3.5 py-2 flex items-center gap-1.5"

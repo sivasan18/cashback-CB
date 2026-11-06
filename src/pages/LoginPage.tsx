@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
   Eye, EyeOff, Lock, Store, AlertTriangle, ShieldAlert,
@@ -56,6 +56,19 @@ export default function LoginPage() {
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
   const [requestingUnlock, setRequestingUnlock] = useState(false)
   const [unlockRequested, setUnlockRequested] = useState(false)
+  const [shopsStatus, setShopsStatus] = useState<Record<number, boolean>>({})
+
+  useEffect(() => {
+    cloudflareApi.shops.list().then(res => {
+      if (res.data) {
+        const map: Record<number, boolean> = {}
+        res.data.forEach((s: any) => {
+          map[s.id] = s.is_active === 1 || s.is_active === true
+        })
+        setShopsStatus(map)
+      }
+    }).catch(() => {})
+  }, [])
 
   // Default redirect after login is strictly New Bill (/billing)
   if (session) return <Navigate to="/billing" replace />
@@ -63,6 +76,7 @@ export default function LoginPage() {
   const currentShop = SHOPS_LIST.find(s => s.id === selectedShopId) || SHOPS_LIST[17]
   const shopTheme = getShopTheme(currentShop.id)
   const ShopIcon = currentShop.icon
+  const isCurrentShopDisabled = shopsStatus[currentShop.id] === false
 
   const handleShopChange = (id: number) => {
     setSelectedShopId(id)
@@ -76,6 +90,10 @@ export default function LoginPage() {
 
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
+    if (isCurrentShopDisabled) {
+      toast.error('This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.')
+      return
+    }
     if (!password) {
       setErrors({ password: 'Password is required' })
       return
@@ -83,7 +101,11 @@ export default function LoginPage() {
 
     const res = await signIn(currentShop.login, password)
     if (res.error) {
-      if (res.is_locked || res.error.toLowerCase().includes('locked')) {
+      if (res.shop_disabled || res.error.toLowerCase().includes('disabled by the food court owner')) {
+        setShopsStatus(prev => ({ ...prev, [currentShop.id]: false }))
+        setErrors({ password: 'This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.' })
+        toast.error('This shop has been disabled by the Food Court Owner.')
+      } else if (res.is_locked || res.error.toLowerCase().includes('locked')) {
         setIsLocked(true)
         setRemainingAttempts(0)
         setErrors({ password: res.error })
@@ -153,8 +175,25 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {/* Shop Disabled by Owner Alert Box */}
+          {isCurrentShopDisabled && (
+            <div className="mb-5 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-900 text-left animate-shake shadow-md">
+              <div className="flex items-start gap-2.5">
+                <Store size={20} className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h3 className="text-xs font-extrabold text-rose-800 dark:text-rose-200 uppercase tracking-wide">
+                    Shop Closed by Owner
+                  </h3>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed font-semibold">
+                    This shop has been disabled by the Food Court Owner. Please contact the owner to reopen.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Account Locked Alert Box */}
-          {isLocked && (
+          {isLocked && !isCurrentShopDisabled && (
             <div className="mb-5 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/60 text-left animate-shake">
               <div className="flex items-start gap-2.5">
                 <ShieldAlert size={20} className="text-rose-600 dark:text-rose-400 flex-shrink-0 mt-0.5" />
@@ -197,7 +236,7 @@ export default function LoginPage() {
           )}
 
           {/* Remaining Attempts Warning */}
-          {!isLocked && remainingAttempts !== null && remainingAttempts > 0 && remainingAttempts < 5 && (
+          {!isLocked && !isCurrentShopDisabled && remainingAttempts !== null && remainingAttempts > 0 && remainingAttempts < 5 && (
             <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-center gap-2 text-xs font-medium text-amber-800 dark:text-amber-200 animate-fade-in">
               <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
               <span>
@@ -221,11 +260,14 @@ export default function LoginPage() {
                   className="form-input pl-10 pr-8 appearance-none bg-no-repeat bg-[right_0.75rem_center] cursor-pointer font-medium text-slate-800 dark:text-slate-100"
                   disabled={loading}
                 >
-                  {SHOPS_LIST.map(shop => (
-                    <option key={shop.id} value={shop.id}>
-                      Shop {shop.id.toString().padStart(2, '0')} – {shop.name}
-                    </option>
-                  ))}
+                  {SHOPS_LIST.map(shop => {
+                    const isDisabled = shopsStatus[shop.id] === false
+                    return (
+                      <option key={shop.id} value={shop.id} className={isDisabled ? 'text-rose-500 font-semibold' : ''}>
+                        Shop {shop.id.toString().padStart(2, '0')} – {shop.name} {isDisabled ? '(Closed by Owner)' : ''}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
             </div>
@@ -251,8 +293,8 @@ export default function LoginPage() {
                     if (errors.password) setErrors({})
                   }}
                   className={`form-input pl-10 pr-10 ${errors.password ? 'border-rose-400 dark:border-rose-500' : ''}`}
-                  placeholder="••••••••"
-                  disabled={loading || isLocked}
+                  placeholder={isCurrentShopDisabled ? 'Shop Closed by Owner' : '••••••••'}
+                  disabled={loading || isLocked || isCurrentShopDisabled}
                   autoFocus
                 />
                 <button
@@ -261,25 +303,27 @@ export default function LoginPage() {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
                   tabIndex={-1}
                   aria-label={showPwd ? 'Hide password' : 'Show password'}
-                  disabled={isLocked}
+                  disabled={isLocked || isCurrentShopDisabled}
                 >
                   {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
-              {errors.password && !isLocked && <p className="form-error">{errors.password}</p>}
+              {errors.password && !isLocked && !isCurrentShopDisabled && <p className="form-error">{errors.password}</p>}
             </div>
 
             <button
               type="submit"
               className={`w-full py-3 text-base mt-2 font-bold text-white rounded-xl bg-gradient-to-r ${shopTheme.primaryGradient} hover:opacity-95 shadow-lg transition-all duration-200 disabled:opacity-50`}
               style={{ boxShadow: `0 8px 20px -4px ${shopTheme.glowColor}` }}
-              disabled={loading || isLocked}
+              disabled={loading || isLocked || isCurrentShopDisabled}
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   Authenticating Shop…
                 </span>
+              ) : isCurrentShopDisabled ? (
+                'Shop Closed by Owner'
               ) : isLocked ? (
                 'Terminal Locked'
               ) : (

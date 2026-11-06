@@ -46,7 +46,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/customer-display" element={<CustomerDisplayPage />} />
-        <Route path="/owner-vista-18" element={<OwnerPortalPage />} />
+        <Route path="/owner-admin" element={<OwnerPortalPage />} />
+        <Route path="/owner-vista-18" element={<Navigate to="/owner-admin" replace />} />
         <Route
           path="/"
           element={

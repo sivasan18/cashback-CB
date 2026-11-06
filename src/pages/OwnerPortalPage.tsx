@@ -4,7 +4,7 @@ import {
   Receipt, ArrowUpRight, ArrowDownRight, RefreshCw, Lock,
   Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, LogOut,
   Edit2, KeyRound, Search, Download, ChevronDown, ChevronRight,
-  ShieldAlert, Clock, BarChart3, HelpCircle, Layers, Award
+  ShieldAlert, Clock, BarChart3, HelpCircle, Layers, Award, X
 } from 'lucide-react'
 import { cloudflareApi } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
@@ -117,12 +117,16 @@ export default function OwnerPortalPage() {
     }
   }
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (modeOverride?: 'customer' | 'shop', shopOverride?: string, searchOverride?: string) => {
+    const activeMode = modeOverride || customerMode
+    const activeShop = shopOverride !== undefined ? shopOverride : selectedShopFilter
+    const activeSearch = searchOverride !== undefined ? searchOverride : customerSearch
+
     setLoadingCustomers(true)
     const { data, error } = await cloudflareApi.owner.getCustomers({
-      search: customerSearch.trim() || undefined,
-      shop_id: selectedShopFilter ? parseInt(selectedShopFilter, 10) : undefined,
-      mode: customerMode
+      search: activeSearch.trim() || undefined,
+      shop_id: activeShop ? parseInt(activeShop, 10) : undefined,
+      mode: activeMode
     })
     setLoadingCustomers(false)
     if (error) {
@@ -132,7 +136,21 @@ export default function OwnerPortalPage() {
     }
   }
 
+  const handleToggleShopActive = async (shop: OverviewData['shops'][0]) => {
+    const nextActive = shop.is_active !== 1
+    const { error } = await cloudflareApi.owner.updateShop(shop.id, {
+      is_active: nextActive
+    })
+    if (error) {
+      toast.error(error.message || 'Failed to update shop status')
+    } else {
+      toast.success(`Shop ${shop.id} (${shop.name}) marked as ${nextActive ? 'Active' : 'Disabled'}`)
+      fetchOverview()
+    }
+  }
+
   useEffect(() => {
+    document.title = 'Owner Admin | Smart Cashback Food Court'
     if (isSuperAdmin) {
       fetchOverview()
     }
@@ -157,7 +175,7 @@ export default function OwnerPortalPage() {
       setLoginError(error)
       toast.error('Access denied. Invalid credentials.')
     } else {
-      toast.success('Welcome to Food Court Master Vista!')
+      toast.success('Welcome to Owner Admin!')
     }
   }
 
@@ -284,9 +302,9 @@ export default function OwnerPortalPage() {
                 <ShieldCheck size={32} className="text-white" />
               </div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 mb-2">
-                Secret Master Owner Portal
+                Secret Owner Admin Portal
               </div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-white">Food Court Master Vista</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight text-white">Owner Admin</h1>
               <p className="text-xs text-slate-400 mt-1">Multi-Tenant 18-Shop Administration</p>
             </div>
 
@@ -425,7 +443,7 @@ export default function OwnerPortalPage() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-white tracking-tight">Food Court Master Vista</h1>
+              <h1 className="text-lg font-bold text-white tracking-tight">Owner Admin</h1>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 18 Shops
               </span>
@@ -446,7 +464,7 @@ export default function OwnerPortalPage() {
           <button
             onClick={() => {
               signOut()
-              toast.success('Signed out of Master Portal')
+              toast.success('Signed out of Owner Admin')
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 transition-colors"
           >
@@ -501,50 +519,85 @@ export default function OwnerPortalPage() {
           </div>
         )}
 
-        {/* KPI Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+        {/* KPI Grid – 3 Interactive Cards with Clickable Drill-Downs */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: Total Food Court Sales */}
+          <div
+            onClick={() => setActiveTab('shops')}
+            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
+            title="Click to view 18-Shops Leaderboard & Sales breakdown"
+          >
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-medium">Total Food Court Sales</span>
-              <DollarSign size={16} className="text-emerald-400" />
+              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
+                Total Food Court Sales
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-extrabold text-sm">
+                ₹
+              </div>
             </div>
-            <p className="text-2xl font-bold text-white">₹{(t?.total_sales || 0).toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-              <ArrowUpRight size={12} /> Today: ₹{(t?.today_sales || 0).toLocaleString('en-IN')}
+            <p className="text-3xl font-extrabold text-white tracking-tight">
+              ₹{(t?.total_sales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
+            <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
+              <span className="text-emerald-400 font-medium flex items-center gap-1">
+                <ArrowUpRight size={13} /> Today: ₹{(t?.today_sales || 0).toLocaleString('en-IN')}
+              </span>
+              <span className="text-slate-400 font-medium">
+                {(t?.total_transactions || 0).toLocaleString('en-IN')} completed orders
+              </span>
+            </div>
           </div>
 
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+          {/* Card 2: Unique Customers */}
+          <div
+            onClick={() => {
+              setActiveTab('customers')
+              setCustomerMode('customer')
+              setCustomerSearch('')
+              setSelectedShopFilter('')
+              fetchCustomers('customer', '', '')
+            }}
+            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
+            title="Click to view Customers & Wallets Explorer"
+          >
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-medium">Total Transactions</span>
-              <Receipt size={16} className="text-sky-400" />
+              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
+                Unique Customers
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <Users size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-white">{(t?.total_transactions || 0).toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-sky-400 mt-1 flex items-center gap-1">
-              <ArrowUpRight size={12} /> Today: {t?.today_transactions || 0} orders
+            <p className="text-3xl font-extrabold text-white tracking-tight">
+              {(t?.unique_customers || 0).toLocaleString('en-IN')}
             </p>
-          </div>
-
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-medium">Unique Customers</span>
-              <Users size={16} className="text-indigo-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">{(t?.unique_customers || 0).toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-indigo-400 mt-1">
+            <div className="text-[11px] text-indigo-300 mt-2.5 pt-2 border-t border-slate-800/80">
               {t?.total_wallets || 0} active wallets across food court
-            </p>
+            </div>
           </div>
 
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4">
+          {/* Card 3: Total Cashback Available (renamed from Outstanding Liability) */}
+          <div
+            onClick={() => {
+              setActiveTab('customers')
+            }}
+            className="bg-slate-900/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/90 rounded-2xl p-5 cursor-pointer transition-all shadow-md group"
+            title="Click to explore Cashback Wallets"
+          >
             <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-medium">Outstanding Liability</span>
-              <Sparkles size={16} className="text-amber-400" />
+              <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
+                Total Cashback Available
+              </span>
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Sparkles size={16} />
+              </div>
             </div>
-            <p className="text-2xl font-bold text-amber-400">₹{(t?.total_wallet_liability || 0).toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Issued: ₹{(t?.total_cashback_issued || 0).toLocaleString('en-IN')} | Redeemed: ₹{(t?.total_cashback_redeemed || 0).toLocaleString('en-IN')}
+            <p className="text-3xl font-extrabold text-amber-400 tracking-tight">
+              ₹{(t?.total_wallet_liability || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
+            <div className="text-[11px] text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
+              Issued: ₹{(t?.total_cashback_issued || 0).toLocaleString('en-IN')} | Redeemed: ₹{(t?.total_cashback_redeemed || 0).toLocaleString('en-IN')}
+            </div>
           </div>
         </div>
 
@@ -627,16 +680,19 @@ export default function OwnerPortalPage() {
                         </div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium ${
+                        <button
+                          type="button"
+                          onClick={() => handleToggleShopActive(s)}
+                          title={`Click to ${s.is_active === 1 ? 'Disable' : 'Enable'} Shop ${s.id}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition-all hover:scale-105 ${
                             s.is_active === 1
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25'
+                              : 'bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25'
                           }`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${s.is_active === 1 ? 'bg-emerald-400' : 'bg-rose-400'}`} />
                           {s.is_active === 1 ? 'Active' : 'Disabled'}
-                        </span>
+                        </button>
                       </td>
                       <td className="py-3.5 px-4 font-medium text-slate-200">
                         ₹{s.today_sales.toLocaleString('en-IN')}
@@ -685,20 +741,28 @@ export default function OwnerPortalPage() {
             <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shadow-lg">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCustomerMode('customer')}
+                  onClick={() => {
+                    setCustomerMode('customer')
+                    setCustomersData([])
+                    fetchCustomers('customer', selectedShopFilter, customerSearch)
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     customerMode === 'customer'
-                      ? 'bg-rose-600 text-white'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
                       : 'bg-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
                   Mode A: Customer-Wise (Grouped)
                 </button>
                 <button
-                  onClick={() => setCustomerMode('shop')}
+                  onClick={() => {
+                    setCustomerMode('shop')
+                    setCustomersData([])
+                    fetchCustomers('shop', selectedShopFilter, customerSearch)
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     customerMode === 'shop'
-                      ? 'bg-rose-600 text-white'
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
                       : 'bg-slate-800 text-slate-400 hover:text-white'
                   }`}
                 >
@@ -715,13 +779,26 @@ export default function OwnerPortalPage() {
                     value={customerSearch}
                     onChange={e => setCustomerSearch(e.target.value)}
                     onKeyDown={e => {
-                      if (e.key === 'Enter') fetchCustomers()
+                      if (e.key === 'Enter') fetchCustomers(customerMode, selectedShopFilter, e.currentTarget.value)
                     }}
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                    className="w-full pl-9 pr-8 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
                   />
+                  {customerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerSearch('')
+                        fetchCustomers(customerMode, selectedShopFilter, '')
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                      title="Clear search"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
                 <button
-                  onClick={fetchCustomers}
+                  onClick={() => fetchCustomers(customerMode, selectedShopFilter, customerSearch)}
                   className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-white border border-slate-700"
                 >
                   Search
@@ -732,7 +809,11 @@ export default function OwnerPortalPage() {
               <div className="flex items-center gap-2">
                 <select
                   value={selectedShopFilter}
-                  onChange={e => setSelectedShopFilter(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value
+                    setSelectedShopFilter(val)
+                    fetchCustomers(customerMode, val, customerSearch)
+                  }}
                   className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 cursor-pointer focus:outline-none focus:border-rose-500"
                 >
                   <option value="">All 18 Shops</option>

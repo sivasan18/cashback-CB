@@ -90,6 +90,7 @@ export interface ShopSettings {
   qr_payment_method?: 'standard_upi' | 'payment_gateway'
   payment_expiry_seconds?: number
   display_timeout_seconds?: number
+  enable_customer_display?: boolean | number
   updated_at: string
 }
 

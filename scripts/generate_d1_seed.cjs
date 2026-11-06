@@ -80,10 +80,10 @@ async function generateSeed() {
   for (const s of SHOPS_DEF) {
     if (s.id === 18 && data.shop_settings && data.shop_settings[0]) {
       const orig = data.shop_settings[0];
-      sqlStatements.push(`INSERT OR REPLACE INTO shop_settings (id, shop_id, shop_name, shop_address, contact_number, cashback_percentage, minimum_eligible_purchase, currency, date_format, time_format, merchant_upi_id, merchant_display_name, qr_payment_method, payment_expiry_seconds, display_timeout_seconds, updated_at) VALUES (${escapeSql(orig.id)}, 18, ${escapeSql(orig.shop_name || s.name)}, ${escapeSql(orig.shop_address || '')}, ${escapeSql(orig.contact_number || '')}, ${orig.cashback_percentage || 2.0}, ${orig.minimum_eligible_purchase || 99.0}, ${escapeSql(orig.currency || 'INR')}, ${escapeSql(orig.date_format || 'DD/MM/YYYY')}, ${escapeSql(orig.time_format || '12h')}, ${escapeSql(orig.merchant_upi_id || '7708481818@upi')}, ${escapeSql(orig.merchant_display_name || s.name)}, ${escapeSql(orig.qr_payment_method || 'standard_upi')}, ${orig.payment_expiry_seconds || 300}, ${orig.display_timeout_seconds || 5}, ${escapeSql(orig.updated_at || new Date().toISOString())});`);
+      sqlStatements.push(`INSERT OR REPLACE INTO shop_settings (id, shop_id, shop_name, shop_address, contact_number, cashback_percentage, minimum_eligible_purchase, currency, date_format, time_format, merchant_upi_id, merchant_display_name, qr_payment_method, payment_expiry_seconds, display_timeout_seconds, enable_customer_display, updated_at) VALUES (${escapeSql(orig.id)}, 18, ${escapeSql(orig.shop_name || s.name)}, ${escapeSql(orig.shop_address || '')}, ${escapeSql(orig.contact_number || '')}, ${orig.cashback_percentage || 2.0}, ${orig.minimum_eligible_purchase || 99.0}, ${escapeSql(orig.currency || 'INR')}, ${escapeSql(orig.date_format || 'DD/MM/YYYY')}, ${escapeSql(orig.time_format || '12h')}, ${escapeSql(orig.merchant_upi_id || '7708481818@upi')}, ${escapeSql(orig.merchant_display_name || s.name)}, ${escapeSql(orig.qr_payment_method || 'standard_upi')}, ${orig.payment_expiry_seconds || 300}, ${orig.display_timeout_seconds || 5}, 1, ${escapeSql(orig.updated_at || new Date().toISOString())});`);
     } else {
       const setId = `set_shop_${s.login.slice(-2)}`;
-      sqlStatements.push(`INSERT OR REPLACE INTO shop_settings (id, shop_id, shop_name, shop_address, contact_number, cashback_percentage, minimum_eligible_purchase, currency, date_format, time_format, merchant_upi_id, merchant_display_name, qr_payment_method, payment_expiry_seconds, display_timeout_seconds, updated_at) VALUES ('${setId}', ${s.id}, ${escapeSql(s.name)}, '', '', 2.0, 99.0, 'INR', 'DD/MM/YYYY', '12h', '7708481818@upi', ${escapeSql(s.name)}, 'standard_upi', 300, 5, datetime('now'));`);
+      sqlStatements.push(`INSERT OR REPLACE INTO shop_settings (id, shop_id, shop_name, shop_address, contact_number, cashback_percentage, minimum_eligible_purchase, currency, date_format, time_format, merchant_upi_id, merchant_display_name, qr_payment_method, payment_expiry_seconds, display_timeout_seconds, enable_customer_display, updated_at) VALUES ('${setId}', ${s.id}, ${escapeSql(s.name)}, '', '', 2.0, 99.0, 'INR', 'DD/MM/YYYY', '12h', '7708481818@upi', ${escapeSql(s.name)}, 'standard_upi', 300, 5, 1, datetime('now'));`);
     }
   }
   sqlStatements.push('');
@@ -111,6 +111,24 @@ async function generateSeed() {
   }
   sqlStatements.push('');
 
+  // 4b. Sample Food Court Customers for Other Shops (Ensures Mode B & Cross-Shop Explorer are rich)
+  const sampleTenantCustomers = [
+    { id: 'cust_s01_01', shop_id: 1, name: 'Ramesh Kumar', mobile: '9711011111', total: 450, earned: 9.00, redeemed: 0, balance: 9.00, cat: 'Fresh Juices' },
+    { id: 'cust_s02_01', shop_id: 2, name: 'Suresh Babu', mobile: '9711022222', total: 850, earned: 17.00, redeemed: 0, balance: 17.00, cat: 'Chicken Biryani' },
+    { id: 'cust_s04_01', shop_id: 4, name: 'Anitha M', mobile: '9711044444', total: 620, earned: 12.40, redeemed: 0, balance: 12.40, cat: 'Veg Pizza' },
+    { id: 'cust_s06_01', shop_id: 6, name: 'Karthik Raja', mobile: '9711066666', total: 240, earned: 4.80, redeemed: 0, balance: 4.80, cat: 'Panipuri' },
+    { id: 'cust_s10_01', shop_id: 10, name: 'Priya S', mobile: '9711100000', total: 180, earned: 3.60, redeemed: 0, balance: 3.60, cat: 'Masala Chai' },
+    // Cross-shop customer visiting both Fruit Shop (1) and Biryani Shop (2)
+    { id: 'cust_cross_01', shop_id: 1, name: 'Karthik S', mobile: '9711888888', total: 200, earned: 4.00, redeemed: 0, balance: 4.00, cat: 'Fresh Fruits' },
+    { id: 'cust_cross_02', shop_id: 2, name: 'Karthik S', mobile: '9711888888', total: 500, earned: 10.00, redeemed: 0, balance: 10.00, cat: 'Egg/Veg Biryani' },
+  ];
+
+  sqlStatements.push('-- 4b. Food Court Tenant Customers (Shops 1..17)');
+  for (const c of sampleTenantCustomers) {
+    sqlStatements.push(`INSERT OR REPLACE INTO customers (id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, created_at, updated_at) VALUES ('${c.id}', ${c.shop_id}, ${escapeSql(c.name)}, '${c.mobile}', ${c.total}, ${c.earned}, ${c.redeemed}, ${c.balance}, datetime('now', '-2 days'), datetime('now', '-1 hours'));`);
+  }
+  sqlStatements.push('');
+
   // 5. Transactions (Shop 18 Data)
   sqlStatements.push('-- 5. Transactions (Shop 18 Data)');
   for (const tx of data.transactions) {
@@ -118,10 +136,25 @@ async function generateSeed() {
   }
   sqlStatements.push('');
 
+  sqlStatements.push('-- 5b. Food Court Tenant Transactions (Shops 1..17)');
+  for (const c of sampleTenantCustomers) {
+    const txId = `tx_${c.id}`;
+    sqlStatements.push(`INSERT OR REPLACE INTO transactions (id, shop_id, customer_id, service_category, bill_amount, cashback_redeemed, amount_paid, cashback_earned, status, notes, payment_method, created_at, updated_at) VALUES ('${txId}', ${c.shop_id}, '${c.id}', ${escapeSql(c.cat)}, ${c.total}, 0, ${c.total}, ${c.earned}, 'completed', 'Food Court Order', 'cash', datetime('now', '-2 days'), datetime('now', '-1 hours'));`);
+  }
+  sqlStatements.push('');
+
   // 6. Cashback Ledger (Shop 18 Data)
   sqlStatements.push('-- 6. Cashback Ledger (Shop 18 Data)');
   for (const l of data.cashback_ledger) {
     sqlStatements.push(`INSERT OR REPLACE INTO cashback_ledger (id, shop_id, customer_id, transaction_id, credit, debit, balance_after, description, created_at) VALUES (${escapeSql(l.id)}, 18, ${escapeSql(l.customer_id)}, ${escapeSql(l.transaction_id)}, ${l.credit || 0}, ${l.debit || 0}, ${l.balance_after}, ${escapeSql(l.description)}, ${escapeSql(l.created_at)});`);
+  }
+  sqlStatements.push('');
+
+  sqlStatements.push('-- 6b. Food Court Tenant Cashback Ledger (Shops 1..17)');
+  for (const c of sampleTenantCustomers) {
+    const txId = `tx_${c.id}`;
+    const ledId = `led_${c.id}`;
+    sqlStatements.push(`INSERT OR REPLACE INTO cashback_ledger (id, shop_id, customer_id, transaction_id, credit, debit, balance_after, description, created_at) VALUES ('${ledId}', ${c.shop_id}, '${c.id}', '${txId}', ${c.earned}, 0, ${c.balance}, 'Cashback earned from Food Court Order', datetime('now', '-2 days'));`);
   }
   sqlStatements.push('');
 

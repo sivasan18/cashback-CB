@@ -646,16 +646,6 @@ export default function BillingPage() {
           <p className="section-subtitle">Point of Sale</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* OPEN CUSTOMER DISPLAY */}
-          <button
-            type="button"
-            onClick={handleOpenCustomerDisplay}
-            className="btn-primary text-xs flex items-center gap-1.5 px-3.5 py-2 font-bold uppercase tracking-wider shadow-sm"
-            title="Open Customer Display in separate window for second monitor"
-          >
-            <Monitor size={15} />
-            <span>OPEN CUSTOMER DISPLAY</span>
-          </button>
           <button onClick={resetBilling} className="btn-secondary text-xs flex items-center gap-1.5">
             <RefreshCw size={14} /> Reset Form
           </button>

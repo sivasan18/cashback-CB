@@ -19,7 +19,7 @@ interface AuthState {
   user: User | null
   loading: boolean
   initialized: boolean
-  signIn: (email: string, password: string) => Promise<{ error: string | null; is_locked?: boolean; remaining_attempts?: number }>
+  signIn: (email: string, password: string) => Promise<{ error: string | null; is_locked?: boolean; remaining_attempts?: number; shop_disabled?: boolean }>
   signOut: () => Promise<void>
   initialize: () => Promise<void>
 }
@@ -52,7 +52,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       return {
         error: error?.message || 'Login failed',
         is_locked: error?.is_locked,
-        remaining_attempts: error?.remaining_attempts
+        remaining_attempts: error?.remaining_attempts,
+        shop_disabled: error?.shop_disabled
       }
     }
     set({
