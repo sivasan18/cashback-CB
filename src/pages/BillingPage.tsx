@@ -7,6 +7,7 @@ import {
   Monitor, MonitorOff, ArrowLeft, X
 } from 'lucide-react'
 import { db } from '@/lib/db'
+import { cloudflareApi } from '@/lib/api'
 import { calculateCashback, formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useDisplayStore, type PaymentMethod, type PaymentVerificationStatus } from '@/store/displayStore'
@@ -212,6 +213,18 @@ export default function BillingPage() {
     if (data) {
       handleSelectCustomer(data as Customer)
     } else {
+      // Global Customer Name Lookup across Food Court
+      try {
+        const lookup = await cloudflareApi.customers.lookupName(norm)
+        if (lookup.data?.found && lookup.data.name) {
+          setNewName(lookup.data.name)
+          toast.success(`Recognized customer: "${lookup.data.name}" from Food Court!`)
+        } else {
+          setNewName('')
+        }
+      } catch {
+        setNewName('')
+      }
       setCustomer(null)
       setIsNewCustomer(true)
       setStep('customer')

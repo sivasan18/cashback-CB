@@ -7,6 +7,7 @@
  * Implements the 6 distinct display states required by Smart Cashback specification.
  */
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Zap, Wifi, WifiOff, ShoppingBag, CreditCard, QrCode,
   CheckCircle, Heart, Clock, Maximize2, Minimize2,
@@ -17,10 +18,24 @@ import { useDisplayStore, type DisplaySession } from '@/store/displayStore'
 import { formatCurrency } from '@/lib/cashback'
 
 export default function CustomerDisplayPage() {
+  const [searchParams] = useSearchParams()
+  const shopParam = searchParams.get('shop')
   const { session, startListening, resetDisplay } = useDisplayStore()
   const [connected, setConnected] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [customShopName, setCustomShopName] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (shopParam) {
+      fetch(`/api/settings?shop_id=${shopParam}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.data?.shop_name) setCustomShopName(data.data.shop_name)
+        })
+        .catch(() => {})
+    }
+  }, [shopParam])
 
   // Start cross-window listener (BroadcastChannel + storage event fallback)
   useEffect(() => {
@@ -55,7 +70,7 @@ export default function CustomerDisplayPage() {
     }
   }, [session.mode, session.displayTimeoutSeconds, resetDisplay])
 
-  const shopName = session.shopName || 'Smart Cashback'
+  const shopName = customShopName || session.shopName || 'Smart Cashback'
 
   // Map modes to active state
   const isFailedOrCancelled = session.paymentStatus === 'payment_failed' || session.paymentStatus === 'payment_expired'

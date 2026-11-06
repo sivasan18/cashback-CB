@@ -12,8 +12,20 @@ export type Json =
 
 // ─── Database row shapes (mirrors Supabase tables) ───────────────────────────
 
+export interface Shop {
+  id: number
+  name: string
+  slug: string
+  login_id: string
+  icon?: string
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface Customer {
   id: string
+  shop_id?: number
   name: string
   mobile: string
   total_purchases: number
@@ -26,6 +38,7 @@ export interface Customer {
 
 export interface Transaction {
   id: string
+  shop_id?: number
   customer_id: string
   customer_name?: string
   customer_mobile?: string
@@ -42,6 +55,7 @@ export interface Transaction {
 
 export interface CashbackLedger {
   id: string
+  shop_id?: number
   customer_id: string
   transaction_id?: string
   credit: number
@@ -53,6 +67,7 @@ export interface CashbackLedger {
 
 export interface ServiceCategory {
   id: string
+  shop_id?: number
   name: string
   is_active: boolean
   sort_order: number
@@ -61,6 +76,7 @@ export interface ServiceCategory {
 
 export interface ShopSettings {
   id: string
+  shop_id?: number
   shop_name: string
   shop_address: string
   contact_number: string

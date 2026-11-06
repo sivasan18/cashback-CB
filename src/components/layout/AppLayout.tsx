@@ -117,7 +117,7 @@ export default function AppLayout() {
             type="button"
             onClick={() => {
               window.open(
-                '/customer-display',
+                `/customer-display?shop=${user?.shop_id || 18}`,
                 'smart-cashback-customer-display',
                 'width=1200,height=800,menubar=no,toolbar=no,location=no,status=no'
               )

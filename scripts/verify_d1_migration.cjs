@@ -13,21 +13,33 @@ function runVerification() {
 
   const dbPath = '/tmp/smart_cashback_test.sqlite';
 
-  // 1. Verify table counts
+  // 1. Verify table counts for migrated Shop 18 and Food Court
   const tables = ['customers', 'transactions', 'cashback_ledger', 'shop_settings', 'service_categories'];
   let countsMatch = true;
 
   for (const table of tables) {
-    const rawCount = execSync(`sqlite3 ${dbPath} "SELECT count(*) FROM ${table};"`).toString().trim();
+    const rawCount = execSync(`sqlite3 ${dbPath} "SELECT count(*) FROM ${table} WHERE shop_id = 18;"`).toString().trim();
     const d1Count = parseInt(rawCount, 10);
     const sourceCount = latestBackup[table].length;
 
     if (d1Count === sourceCount) {
-      console.log(`✅ ${table}: Source=${sourceCount} | D1=${d1Count} (MATCH)`);
+      console.log(`✅ ${table} (Shop 18): Source=${sourceCount} | D1=${d1Count} (MATCH)`);
     } else {
-      console.error(`❌ ${table}: Source=${sourceCount} | D1=${d1Count} (MISMATCH!)`);
+      console.error(`❌ ${table} (Shop 18): Source=${sourceCount} | D1=${d1Count} (MISMATCH!)`);
       countsMatch = false;
     }
+  }
+
+  // Verify 18 Shops in Food Court
+  const totalShops = parseInt(execSync(`sqlite3 ${dbPath} "SELECT count(*) FROM shops;"`).toString().trim(), 10);
+  const totalSettings = parseInt(execSync(`sqlite3 ${dbPath} "SELECT count(*) FROM shop_settings;"`).toString().trim(), 10);
+  const totalAdmins = parseInt(execSync(`sqlite3 ${dbPath} "SELECT count(*) FROM admin_users;"`).toString().trim(), 10);
+
+  if (totalShops === 18 && totalSettings === 18 && totalAdmins === 19) {
+    console.log(`✅ Multi-Tenant Food Court Setup: 18 Shops, 18 Settings, 19 Accounts (18 Shop Admins + 1 Master Owner) (MATCH)`);
+  } else {
+    console.error(`❌ Multi-Tenant counts: Shops=${totalShops}, Settings=${totalSettings}, Admins=${totalAdmins}`);
+    countsMatch = false;
   }
 
   // 2. Foreign Key Integrity Check

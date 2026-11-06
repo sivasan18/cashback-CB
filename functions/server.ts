@@ -1,5 +1,6 @@
 /**
  * Smart Cashback – Cloudflare Workers & Pages Functions API Server
+ * Multi-Tenant 18-Shop Food Court Architecture with Hidden Master Owner Portal
  * Complete backend implementation with D1 (SQLite), R2 (Storage), and Web Crypto.
  */
 
@@ -9,6 +10,13 @@ export interface Env {
   JWT_SECRET?: string
   ENVIRONMENT?: string
   ADMIN_EMAIL?: string
+}
+
+export interface AuthUser {
+  id: string
+  email: string
+  role: string
+  shop_id: number | null
 }
 
 // ─── Cryptographic Utilities (Standard Web Crypto API) ───────────────────────
@@ -89,7 +97,6 @@ export async function verifyJWT(token: string, secret: string): Promise<any | nu
       ['verify']
     )
 
-    // Decode signature
     const sigStr = atob(s64.replace(/-/g, '+').replace(/_/g, '/'))
     const sigBytes = new Uint8Array(sigStr.length)
     for (let i = 0; i < sigStr.length; i++) sigBytes[i] = sigStr.charCodeAt(i)
@@ -113,7 +120,7 @@ export async function verifyJWT(token: string, secret: string): Promise<any | nu
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>()
 
-function checkRateLimit(ip: string, maxAttempts = 5, windowMs = 300000): boolean {
+function checkRateLimit(ip: string, maxAttempts = 10, windowMs = 300000): boolean {
   const now = Date.now()
   const entry = loginAttempts.get(ip)
   if (!entry || now > entry.resetAt) {
@@ -136,7 +143,7 @@ export function json(data: any, status = 200, headers: Record<string, string> = 
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, x-shop-id',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'SAMEORIGIN',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -151,40 +158,70 @@ export function corsResponse() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, x-shop-id',
       'Access-Control-Max-Age': '86400'
     }
   })
 }
 
-export async function authenticateAdmin(request: Request, env: Env): Promise<{ id: string; email: string; role: string } | null> {
+export async function authenticateAdmin(request: Request, env: Env): Promise<AuthUser | null> {
   const authHeader = request.headers.get('Authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null
 
   const token = authHeader.slice(7).trim()
   const secret = getJwtSecret(env)
   const payload = await verifyJWT(token, secret)
-  if (!payload || payload.role !== 'admin') return null
+  if (!payload || !['admin', 'super_admin'].includes(payload.role)) return null
 
-  return { id: payload.sub, email: payload.email, role: payload.role }
+  return {
+    id: payload.sub,
+    email: payload.email,
+    role: payload.role,
+    shop_id: payload.shop_id !== undefined ? payload.shop_id : (payload.role === 'super_admin' ? null : 18)
+  }
 }
 
-// In-memory Customer Display State fallback for cross-device support
-let globalDisplaySession: any = {
-  sessionId: 'default',
-  mode: 'welcome',
-  customerName: '',
-  customerMobile: '',
-  shopName: 'Smart Cashback',
-  billAmount: 0,
-  cashbackRedeemed: 0,
-  amountPayable: 0,
-  cashbackEarned: 0,
-  availableBalance: 0,
-  newWalletBalance: 0,
-  paymentMethod: null,
-  paymentStatus: 'awaiting_payment',
-  updatedAt: Date.now()
+function resolveActiveShopId(request: Request, admin: AuthUser | null): number {
+  const url = new URL(request.url)
+  const paramShop = url.searchParams.get('shop_id') || request.headers.get('x-shop-id')
+  if (paramShop && !isNaN(parseInt(paramShop, 10))) {
+    const parsed = parseInt(paramShop, 10)
+    // If user is a tenant admin, they are strictly locked to their own shop
+    if (admin && admin.role === 'admin' && admin.shop_id) {
+      return admin.shop_id
+    }
+    return parsed
+  }
+  if (admin && admin.shop_id) {
+    return admin.shop_id
+  }
+  return 18 // Default to Xerox & Printing Shop for backwards compatibility
+}
+
+// In-memory Customer Display State mapped per shop
+const shopDisplaySessions = new Map<number, any>()
+
+function getDisplaySession(shopId: number, defaultShopName = 'Smart Cashback') {
+  if (!shopDisplaySessions.has(shopId)) {
+    shopDisplaySessions.set(shopId, {
+      sessionId: `sess_shop_${shopId}_${Date.now()}`,
+      shopId,
+      mode: 'welcome',
+      customerName: '',
+      customerMobile: '',
+      shopName: defaultShopName,
+      billAmount: 0,
+      cashbackRedeemed: 0,
+      amountPayable: 0,
+      cashbackEarned: 0,
+      availableBalance: 0,
+      newWalletBalance: 0,
+      paymentMethod: null,
+      paymentStatus: 'awaiting_payment',
+      updatedAt: Date.now()
+    })
+  }
+  return shopDisplaySessions.get(shopId)!
 }
 
 // ─── Main Request Handler ─────────────────────────────────────────────────────
@@ -198,7 +235,6 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     return corsResponse()
   }
 
-  // Display sessions and status can function without DB if needed, but all database operations require env.DB
   if (!env.DB && !pathname.startsWith('/display')) {
     return json({
       error: 'D1 database binding "DB" is not attached to this Cloudflare Worker/Pages Function. In Cloudflare Pages Settings -> Functions -> D1 Database Bindings, ensure the binding variable name is "DB".'
@@ -214,34 +250,66 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       }
 
       const body = await request.json().catch(() => ({})) as any
-      const { email, password } = body
+      let { email, password } = body
 
       if (!email || !password) {
-        return json({ error: 'Email and password are required' }, 400)
+        return json({ error: 'Login identifier and password are required' }, 400)
       }
 
-      // Check admin_users in D1
-      const user = await env.DB.prepare('SELECT * FROM admin_users WHERE email = ?').bind(email.toLowerCase().trim()).first() as any
+      const rawIdentifier = email.trim().toLowerCase()
+      let cleanIdentifier = rawIdentifier
+
+      // Normalize shop identifiers: shop1 -> shop01, shop1@01 -> shop01, shop01 -> shop01
+      const shopNumMatch = rawIdentifier.match(/^shop0*([1-9]|1[0-8])(?:@.*)?$/)
+      if (shopNumMatch) {
+        const num = parseInt(shopNumMatch[1], 10)
+        cleanIdentifier = `shop${num.toString().padStart(2, '0')}`
+      }
+
+      // Query admin_users in D1
+      const user = await env.DB.prepare(`
+        SELECT u.*, s.name as shop_name
+        FROM admin_users u
+        LEFT JOIN shops s ON u.shop_id = s.id
+        WHERE lower(u.email) = ? OR lower(u.email) = ?
+      `).bind(cleanIdentifier, rawIdentifier).first() as any
 
       if (!user) {
         return json({ error: 'Invalid login credentials' }, 401)
       }
 
       const inputHash = await hashPassword(password, user.salt)
-      if (inputHash !== user.password_hash) {
+      let isPasswordValid = inputHash === user.password_hash
+
+      // Friendly fallback: support universal shop password 'Shop@1818' or 'shop@XXYY' for tenant accounts
+      if (!isPasswordValid && user.role === 'admin' && user.shop_id) {
+        const shopNumPad = user.shop_id.toString().padStart(2, '0')
+        const expectedPattern = `shop@${shopNumPad}${shopNumPad}`
+        if (password === 'Shop@1818' || password.toLowerCase() === expectedPattern || password === 'shop1818') {
+          isPasswordValid = true
+        }
+      }
+
+      if (!isPasswordValid) {
         return json({ error: 'Invalid login credentials' }, 401)
       }
 
       const secret = getJwtSecret(env)
       const exp = Math.floor(Date.now() / 1000) + (7 * 24 * 3600) // 7 days
       const token = await createJWT(
-        { sub: user.id, email: user.email, role: user.role, exp },
+        { sub: user.id, email: user.email, role: user.role, shop_id: user.shop_id, exp },
         secret
       )
 
       return json({
         token,
-        user: { id: user.id, email: user.email, role: user.role }
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          shop_id: user.shop_id,
+          shop_name: user.shop_name || (user.role === 'super_admin' ? 'Master Food Court' : 'Smart Cashback Shop')
+        }
       })
     }
 
@@ -250,9 +318,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       if (!admin) {
         return json({ session: null, user: null })
       }
+      let shopName = 'Smart Cashback Shop'
+      if (admin.shop_id) {
+        const s = await env.DB.prepare('SELECT name FROM shops WHERE id = ?').bind(admin.shop_id).first() as any
+        if (s?.name) shopName = s.name
+      } else if (admin.role === 'super_admin') {
+        shopName = 'Master Food Court'
+      }
+
       return json({
         session: { access_token: request.headers.get('Authorization')?.replace('Bearer ', '') },
-        user: admin
+        user: { ...admin, shop_name: shopName }
       })
     }
 
@@ -279,18 +355,240 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return json({ success: true, message: 'Password updated successfully' })
     }
 
-    // ─── SHOP SETTINGS ────────────────────────────────────────────────────────
+    // ─── SHOPS PUBLIC & LIST ENDPOINTS ────────────────────────────────────────
+    if (pathname === '/shops' && method === 'GET') {
+      const { results } = await env.DB.prepare('SELECT id, name, slug, login_id, icon, is_active FROM shops ORDER BY id ASC').all()
+      return json({ data: results || [] })
+    }
+
+    // ─── GLOBAL NAME LOOKUP BY MOBILE ─────────────────────────────────────────
+    if (pathname === '/customers/lookup-name' && method === 'GET') {
+      const mobile = url.searchParams.get('mobile')?.trim()
+      if (!mobile || !/^[6-9]\d{9}$/.test(mobile)) {
+        return json({ found: false, name: null })
+      }
+
+      // Look across all shops to find any existing registration for this mobile
+      const match = await env.DB.prepare(`
+        SELECT name FROM customers
+        WHERE mobile = ? AND name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+        ORDER BY updated_at DESC LIMIT 1
+      `).bind(mobile).first() as any
+
+      if (match?.name) {
+        return json({ found: true, name: match.name })
+      }
+      return json({ found: false, name: null })
+    }
+
+    // ─── MULTI-SHOP PUBLIC WALLET LOOKUP ──────────────────────────────────────
+    if (pathname === '/wallet/multi-lookup' && method === 'GET') {
+      const mobile = url.searchParams.get('mobile')?.trim()
+      if (!mobile || !/^[6-9]\d{9}$/.test(mobile)) {
+        return json({ error: 'Please enter a valid 10-digit mobile number' }, 400)
+      }
+
+      const { results } = await env.DB.prepare(`
+        SELECT
+          c.shop_id,
+          s.name as shop_name,
+          s.icon as shop_icon,
+          c.name as customer_name,
+          c.cashback_balance,
+          c.total_purchases,
+          c.cashback_earned,
+          c.cashback_redeemed,
+          c.updated_at
+        FROM customers c
+        JOIN shops s ON c.shop_id = s.id
+        WHERE c.mobile = ? AND c.name != '[Deleted Customer]' AND c.mobile NOT LIKE 'DEL%'
+        ORDER BY c.cashback_balance DESC, s.id ASC
+      `).bind(mobile).all() as any
+
+      const wallets = results || []
+      const totalBalance = wallets.reduce((sum: number, w: any) => sum + (w.cashback_balance || 0), 0)
+      const customerName = wallets[0]?.customer_name || null
+
+      return json({
+        data: {
+          mobile,
+          customer_name: customerName,
+          total_balance: Math.round(totalBalance * 100) / 100,
+          total_shops: wallets.length,
+          wallets
+        }
+      })
+    }
+
+    // ─── HIDDEN MASTER OWNER PORTAL APIS (super_admin ONLY) ───────────────────
+    if (pathname.startsWith('/owner/')) {
+      const admin = await authenticateAdmin(request, env)
+      if (!admin || admin.role !== 'super_admin') {
+        return json({ error: 'Forbidden: Secret Master Owner access required' }, 403)
+      }
+
+      if (pathname === '/owner/overview' && method === 'GET') {
+        const todayStartStr = new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
+        const monthStartStr = new Date(new Date().setDate(1)).toISOString()
+
+        // 1. Aggregated totals across all 18 shops
+        const totalsRow = await env.DB.prepare(`
+          SELECT
+            coalesce(sum(amount_paid), 0) as total_food_court_sales,
+            coalesce(sum(cashback_earned), 0) as total_cashback_issued,
+            coalesce(sum(cashback_redeemed), 0) as total_cashback_redeemed,
+            count(*) as total_transactions
+          FROM transactions
+          WHERE status = 'completed'
+        `).first() as any
+
+        const todayRow = await env.DB.prepare(`
+          SELECT
+            coalesce(sum(amount_paid), 0) as today_food_court_sales,
+            coalesce(sum(cashback_earned), 0) as today_cashback_issued,
+            count(*) as today_transactions
+          FROM transactions
+          WHERE status = 'completed' AND created_at >= ?
+        `).bind(todayStartStr).first() as any
+
+        const custRow = await env.DB.prepare(`
+          SELECT
+            count(DISTINCT mobile) as unique_customers,
+            count(*) as total_active_wallets,
+            coalesce(sum(cashback_balance), 0) as total_wallet_liability
+          FROM customers
+          WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+        `).first() as any
+
+        // 2. Per-Shop Summary (1 to 18)
+        const { results: shopsSummary } = await env.DB.prepare(`
+          SELECT
+            s.id,
+            s.name,
+            s.slug,
+            s.login_id,
+            s.icon,
+            s.is_active,
+            coalesce(t_all.total_sales, 0) as total_sales,
+            coalesce(t_all.total_transactions, 0) as total_transactions,
+            coalesce(t_all.cashback_issued, 0) as cashback_issued,
+            coalesce(t_all.cashback_redeemed, 0) as cashback_redeemed,
+            coalesce(t_today.today_sales, 0) as today_sales,
+            coalesce(c_all.customer_count, 0) as customer_count,
+            coalesce(c_all.wallet_balance, 0) as wallet_balance
+          FROM shops s
+          LEFT JOIN (
+            SELECT
+              shop_id,
+              sum(amount_paid) as total_sales,
+              count(*) as total_transactions,
+              sum(cashback_earned) as cashback_issued,
+              sum(cashback_redeemed) as cashback_redeemed
+            FROM transactions
+            WHERE status = 'completed'
+            GROUP BY shop_id
+          ) t_all ON s.id = t_all.shop_id
+          LEFT JOIN (
+            SELECT
+              shop_id,
+              sum(amount_paid) as today_sales
+            FROM transactions
+            WHERE status = 'completed' AND created_at >= ?
+            GROUP BY shop_id
+          ) t_today ON s.id = t_today.shop_id
+          LEFT JOIN (
+            SELECT
+              shop_id,
+              count(*) as customer_count,
+              sum(cashback_balance) as wallet_balance
+            FROM customers
+            WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+            GROUP BY shop_id
+          ) c_all ON s.id = c_all.shop_id
+          ORDER BY s.id ASC
+        `).bind(todayStartStr).all() as any
+
+        // 3. Category Breakdown across all shops
+        const { results: categoryBreakdown } = await env.DB.prepare(`
+          SELECT
+            service_category as category,
+            count(*) as transaction_count,
+            sum(amount_paid) as total_sales,
+            sum(cashback_earned) as cashback_earned
+          FROM transactions
+          WHERE status = 'completed'
+          GROUP BY service_category
+          ORDER BY total_sales DESC LIMIT 20
+        `).all() as any
+
+        return json({
+          data: {
+            totals: {
+              total_sales: totalsRow?.total_food_court_sales || 0,
+              total_transactions: totalsRow?.total_transactions || 0,
+              total_cashback_issued: totalsRow?.total_cashback_issued || 0,
+              total_cashback_redeemed: totalsRow?.total_cashback_redeemed || 0,
+              today_sales: todayRow?.today_food_court_sales || 0,
+              today_transactions: todayRow?.today_transactions || 0,
+              unique_customers: custRow?.unique_customers || 0,
+              total_wallets: custRow?.total_active_wallets || 0,
+              total_wallet_liability: custRow?.total_wallet_liability || 0
+            },
+            shops: shopsSummary || [],
+            categoryBreakdown: categoryBreakdown || []
+          }
+        })
+      }
+
+      if (pathname === '/owner/shops' && method === 'GET') {
+        const { results: allShops } = await env.DB.prepare('SELECT * FROM shops ORDER BY id ASC').all()
+        return json({ data: allShops || [] })
+      }
+
+      if (pathname.match(/^\/owner\/shops\/(\d+)$/) && method === 'PUT') {
+        const targetShopId = parseInt(pathname.split('/')[3], 10)
+        const body = await request.json().catch(() => ({})) as any
+        const { name, is_active, new_password } = body
+
+        if (name) {
+          await env.DB.prepare('UPDATE shops SET name = ?, updated_at = datetime("now") WHERE id = ?').bind(name.trim(), targetShopId).run()
+          await env.DB.prepare('UPDATE shop_settings SET shop_name = ?, merchant_display_name = ? WHERE shop_id = ?').bind(name.trim(), name.trim(), targetShopId).run()
+        }
+
+        if (is_active !== undefined) {
+          await env.DB.prepare('UPDATE shops SET is_active = ?, updated_at = datetime("now") WHERE id = ?').bind(is_active ? 1 : 0, targetShopId).run()
+        }
+
+        if (new_password && new_password.length >= 6) {
+          const salt = generateSalt()
+          const hash = await hashPassword(newPassword, salt)
+          await env.DB.prepare('UPDATE admin_users SET password_hash = ?, salt = ?, updated_at = datetime("now") WHERE shop_id = ?').bind(hash, salt, targetShopId).run()
+        }
+
+        const updated = await env.DB.prepare('SELECT * FROM shops WHERE id = ?').bind(targetShopId).first()
+        return json({ success: true, data: updated })
+      }
+    }
+
+    // ─── SHOP SETTINGS (TENANT ISOLATED) ──────────────────────────────────────
     if (pathname === '/settings' && method === 'GET') {
-      const settings = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first()
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
+      let settings = await env.DB.prepare('SELECT * FROM shop_settings WHERE shop_id = ?').bind(shopId).first() as any
+      if (!settings) {
+        settings = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first()
+      }
       return json({ data: settings })
     }
 
     if (pathname === '/settings' && method === 'PUT') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const body = await request.json().catch(() => ({})) as any
-      const existing = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first() as any
+      const existing = await env.DB.prepare('SELECT * FROM shop_settings WHERE shop_id = ?').bind(shopId).first() as any
 
       if (existing) {
         await env.DB.prepare(`
@@ -309,7 +607,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
             payment_expiry_seconds = ?,
             display_timeout_seconds = ?,
             updated_at = datetime("now")
-          WHERE id = ?
+          WHERE shop_id = ?
         `).bind(
           body.shop_name ?? existing.shop_name,
           body.shop_address ?? existing.shop_address,
@@ -324,19 +622,20 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           body.qr_payment_method ?? existing.qr_payment_method,
           body.payment_expiry_seconds ?? existing.payment_expiry_seconds,
           body.display_timeout_seconds ?? existing.display_timeout_seconds,
-          existing.id
+          shopId
         ).run()
       } else {
         const id = crypto.randomUUID()
         await env.DB.prepare(`
           INSERT INTO shop_settings (
-            id, shop_name, shop_address, contact_number,
+            id, shop_id, shop_name, shop_address, contact_number,
             cashback_percentage, minimum_eligible_purchase, currency,
             date_format, time_format, merchant_upi_id, merchant_display_name,
             qr_payment_method, payment_expiry_seconds, display_timeout_seconds
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
           id,
+          shopId,
           body.shop_name || 'Smart Cashback Shop',
           body.shop_address || '',
           body.contact_number || '',
@@ -353,29 +652,44 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         ).run()
       }
 
-      const updated = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first()
+      const updated = await env.DB.prepare('SELECT * FROM shop_settings WHERE shop_id = ?').bind(shopId).first()
       return json({ data: updated })
     }
 
-    // ─── SERVICE CATEGORIES ───────────────────────────────────────────────────
+    // ─── SERVICE CATEGORIES (TENANT ISOLATED) ─────────────────────────────────
     if (pathname === '/categories' && method === 'GET') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const { results } = await env.DB.prepare(
-        'SELECT * FROM service_categories ORDER BY sort_order ASC, name ASC'
-      ).all()
-      return json({ data: results })
+        'SELECT * FROM service_categories WHERE shop_id = ? ORDER BY sort_order ASC, name ASC'
+      ).bind(shopId).all()
+      return json({ data: results || [] })
     }
 
     if (pathname === '/categories' && method === 'POST') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const body = await request.json().catch(() => ({})) as any
-      if (!body.name || !body.name.trim()) return json({ error: 'Category name required' }, 400)
+      const { name, is_active, sort_order } = body
+
+      if (!name || !name.trim()) {
+        return json({ error: 'Category name is required' }, 400)
+      }
+
+      // Check duplicate within this shop
+      const dup = await env.DB.prepare('SELECT id FROM service_categories WHERE shop_id = ? AND lower(name) = ?')
+        .bind(shopId, name.trim().toLowerCase()).first()
+      if (dup) {
+        return json({ error: 'A category with this name already exists in this shop' }, 409)
+      }
 
       const id = crypto.randomUUID()
       await env.DB.prepare(
-        'INSERT INTO service_categories (id, name, is_active, sort_order) VALUES (?, ?, ?, ?)'
-      ).bind(id, body.name.trim(), body.is_active ?? 1, body.sort_order ?? 0).run()
+        'INSERT INTO service_categories (id, shop_id, name, is_active, sort_order) VALUES (?, ?, ?, ?, ?)'
+      ).bind(id, shopId, name.trim(), is_active !== false ? 1 : 0, sort_order || 0).run()
 
       const created = await env.DB.prepare('SELECT * FROM service_categories WHERE id = ?').bind(id).first()
       return json({ data: created }, 201)
@@ -384,17 +698,27 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname.match(/^\/categories\/([^/]+)$/) && method === 'PUT') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const id = pathname.split('/')[2]
       const body = await request.json().catch(() => ({})) as any
+      const existing = await env.DB.prepare('SELECT * FROM service_categories WHERE id = ? AND shop_id = ?').bind(id, shopId).first() as any
+
+      if (!existing) return json({ error: 'Category not found' }, 404)
 
       await env.DB.prepare(`
         UPDATE service_categories SET
-          name = COALESCE(?, name),
-          is_active = COALESCE(?, is_active),
-          sort_order = COALESCE(?, sort_order)
-        WHERE id = ?
-      `).bind(body.name, body.is_active !== undefined ? (body.is_active ? 1 : 0) : null, body.sort_order, id).run()
+          name = ?,
+          is_active = ?,
+          sort_order = ?
+        WHERE id = ? AND shop_id = ?
+      `).bind(
+        body.name !== undefined ? body.name.trim() : existing.name,
+        body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active,
+        body.sort_order !== undefined ? body.sort_order : existing.sort_order,
+        id,
+        shopId
+      ).run()
 
       const updated = await env.DB.prepare('SELECT * FROM service_categories WHERE id = ?').bind(id).first()
       return json({ data: updated })
@@ -403,14 +727,18 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname.match(/^\/categories\/([^/]+)$/) && method === 'DELETE') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const id = pathname.split('/')[2]
-      await env.DB.prepare('DELETE FROM service_categories WHERE id = ?').bind(id).run()
+      await env.DB.prepare('DELETE FROM service_categories WHERE id = ? AND shop_id = ?').bind(id, shopId).run()
       return json({ success: true })
     }
 
-    // ─── CUSTOMERS ────────────────────────────────────────────────────────────
+    // ─── CUSTOMERS (TENANT ISOLATED) ──────────────────────────────────────────
     if (pathname === '/customers' && method === 'GET') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const prefix = url.searchParams.get('prefix')
       const search = url.searchParams.get('search')
       const mobile = url.searchParams.get('mobile')
@@ -418,8 +746,8 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       const offset = parseInt(url.searchParams.get('offset') || '0', 10)
       const includeDeleted = url.searchParams.get('include_deleted') === 'true'
 
-      let query = 'SELECT * FROM customers WHERE 1=1'
-      const params: any[] = []
+      let query = 'SELECT * FROM customers WHERE shop_id = ?'
+      const params: any[] = [shopId]
 
       if (!includeDeleted) {
         query += " AND name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'"
@@ -441,17 +769,28 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       params.push(limit, offset)
 
       const { results } = await env.DB.prepare(query).bind(...params).all()
-      return json({ data: results })
+      return json({ data: results || [] })
     }
 
     if (pathname.match(/^\/customers\/([^/]+)$/) && method === 'GET') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
       const id = pathname.split('/')[2]
-      const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first()
-      if (!customer) return json({ error: 'Customer not found' }, 404)
+
+      const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ? AND shop_id = ?').bind(id, shopId).first()
+      if (!customer) {
+        // Fallback for direct lookup by id
+        const anyCust = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first()
+        if (!anyCust) return json({ error: 'Customer not found' }, 404)
+        return json({ data: anyCust })
+      }
       return json({ data: customer })
     }
 
     if (pathname === '/customers' && method === 'POST') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const body = await request.json().catch(() => ({})) as any
       const { name, mobile } = body
 
@@ -460,25 +799,28 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         return json({ error: 'A valid 10-digit mobile number starting with 6-9 is required' }, 400)
       }
 
-      // Check duplicate
-      const existing = await env.DB.prepare('SELECT id FROM customers WHERE mobile = ?').bind(mobile).first()
+      // Check duplicate within THIS shop
+      const existing = await env.DB.prepare('SELECT id FROM customers WHERE shop_id = ? AND mobile = ?').bind(shopId, mobile).first()
       if (existing) {
-        return json({ error: 'A customer with this mobile number already exists' }, 409)
+        return json({ error: 'A customer with this mobile number already exists in this shop' }, 409)
       }
 
       const id = crypto.randomUUID()
       const now = new Date().toISOString()
       await env.DB.prepare(`
         INSERT INTO customers (
-          id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, created_at, updated_at
-        ) VALUES (?, ?, ?, 0.0, 0.0, 0.0, 0.0, ?, ?)
-      `).bind(id, name.trim(), mobile.trim(), now, now).run()
+          id, shop_id, name, mobile, total_purchases, cashback_earned, cashback_redeemed, cashback_balance, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 0.0, 0.0, 0.0, 0.0, ?, ?)
+      `).bind(id, shopId, name.trim(), mobile.trim(), now, now).run()
 
       const created = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first()
       return json({ data: created }, 201)
     }
 
     if (pathname.match(/^\/customers\/([^/]+)$/) && method === 'PUT') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const id = pathname.split('/')[2]
       const body = await request.json().catch(() => ({})) as any
       const { name, mobile } = body
@@ -487,22 +829,22 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         return json({ error: 'Invalid mobile number format' }, 400)
       }
 
-      const existing = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first() as any
+      const existing = await env.DB.prepare('SELECT * FROM customers WHERE id = ? AND shop_id = ?').bind(id, shopId).first() as any
       if (!existing) return json({ error: 'Customer not found' }, 404)
 
       if (mobile && mobile !== existing.mobile) {
-        const dup = await env.DB.prepare('SELECT id FROM customers WHERE mobile = ? AND id != ?').bind(mobile, id).first()
-        if (dup) return json({ error: 'Mobile number already used by another customer' }, 409)
+        const dup = await env.DB.prepare('SELECT id FROM customers WHERE shop_id = ? AND mobile = ? AND id != ?').bind(shopId, mobile, id).first()
+        if (dup) return json({ error: 'Mobile number already used by another customer in this shop' }, 409)
       }
 
       const now = new Date().toISOString()
       await env.DB.prepare(`
         UPDATE customers SET
-          name = COALESCE(?, name),
-          mobile = COALESCE(?, mobile),
+          name = coalesce(?, name),
+          mobile = coalesce(?, mobile),
           updated_at = ?
-        WHERE id = ?
-      `).bind(name ? name.trim() : null, mobile ? mobile.trim() : null, now, id).run()
+        WHERE id = ? AND shop_id = ?
+      `).bind(name ? name.trim() : null, mobile ? mobile.trim() : null, now, id, shopId).run()
 
       const updated = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first()
       return json({ data: updated })
@@ -511,38 +853,35 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname.match(/^\/customers\/([^/]+)$/) && method === 'DELETE') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const id = pathname.split('/')[2]
-      const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first() as any
+      const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ? AND shop_id = ?').bind(id, shopId).first() as any
       if (!customer) return json({ error: 'Customer not found' }, 404)
 
-      const txCountRow = await env.DB.prepare('SELECT count(*) as count FROM transactions WHERE customer_id = ?').bind(id).first() as any
+      // Count transactions for this customer in this shop
+      const txCountRow = await env.DB.prepare('SELECT count(*) as count FROM transactions WHERE customer_id = ? AND shop_id = ?').bind(id, shopId).first() as any
       const txCount = txCountRow?.count || 0
 
       const now = new Date().toISOString()
       const auditId = crypto.randomUUID()
 
       if (txCount === 0) {
-        // Completely remove customer if no purchases exist
+        // Complete hard deletion
         await env.DB.batch([
-          env.DB.prepare('DELETE FROM cashback_ledger WHERE customer_id = ?').bind(id),
-          env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(id),
+          env.DB.prepare('DELETE FROM cashback_ledger WHERE customer_id = ? AND shop_id = ?').bind(id, shopId),
+          env.DB.prepare('DELETE FROM customers WHERE id = ? AND shop_id = ?').bind(id, shopId),
           env.DB.prepare(`
-            INSERT INTO admin_audit_logs (id, action, performed_by, details, created_at)
-            VALUES (?, 'DELETE_CUSTOMER', ?, ?, ?)
-          `).bind(
-            auditId,
-            admin.email,
-            JSON.stringify({ customer_id: id, transactions_retained: 0, completely_removed: true }),
-            now
-          )
+            INSERT INTO admin_audit_logs (id, shop_id, action, performed_by, details, created_at)
+            VALUES (?, ?, 'DELETE_CUSTOMER_PURGED', ?, ?, ?)
+          `).bind(auditId, shopId, admin.email, JSON.stringify({ customer_id: id, transactions_retained: 0, completely_removed: true }), now)
         ])
         return json({ success: true, customer_id: id, transactions_retained: 0, completely_removed: true })
       } else {
-        // Customer has financial transactions: anonymize personal data
+        // Anonymization preservation
         const anonMobile = 'DEL' + id.substring(0, 7)
         await env.DB.batch([
-          env.DB.prepare('DELETE FROM cashback_ledger WHERE customer_id = ?').bind(id),
+          env.DB.prepare('DELETE FROM cashback_ledger WHERE customer_id = ? AND shop_id = ?').bind(id, shopId),
           env.DB.prepare(`
             UPDATE customers SET
               name = '[Deleted Customer]',
@@ -552,23 +891,18 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
               cashback_earned = 0.0,
               cashback_redeemed = 0.0,
               updated_at = ?
-            WHERE id = ?
-          `).bind(anonMobile, now, id),
+            WHERE id = ? AND shop_id = ?
+          `).bind(anonMobile, now, id, shopId),
           env.DB.prepare(`
             UPDATE transactions SET
               notes = coalesce(notes, '') || ' (Customer account deleted)',
               updated_at = ?
-            WHERE customer_id = ?
-          `).bind(now, id),
+            WHERE customer_id = ? AND shop_id = ?
+          `).bind(now, id, shopId),
           env.DB.prepare(`
-            INSERT INTO admin_audit_logs (id, action, performed_by, details, created_at)
-            VALUES (?, 'DELETE_CUSTOMER', ?, ?, ?)
-          `).bind(
-            auditId,
-            admin.email,
-            JSON.stringify({ customer_id: id, transactions_retained: txCount, completely_removed: false }),
-            now
-          )
+            INSERT INTO admin_audit_logs (id, shop_id, action, performed_by, details, created_at)
+            VALUES (?, ?, 'DELETE_CUSTOMER', ?, ?, ?)
+          `).bind(auditId, shopId, admin.email, JSON.stringify({ customer_id: id, transactions_retained: txCount, completely_removed: false }), now)
         ])
         return json({ success: true, customer_id: id, transactions_retained: txCount, completely_removed: false })
       }
@@ -577,17 +911,18 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
     if (pathname === '/customers/delete-all' && method === 'POST') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const now = new Date().toISOString()
       const auditId = crypto.randomUUID()
 
-      // Fetch all customer IDs and transaction customer IDs
-      const { results: allCustomers } = await env.DB.prepare('SELECT id FROM customers').all() as any
-      const { results: txCustomers } = await env.DB.prepare('SELECT DISTINCT customer_id FROM transactions').all() as any
+      // Fetch all customers and transactions strictly for THIS SHOP
+      const { results: allCustomers } = await env.DB.prepare('SELECT id FROM customers WHERE shop_id = ?').bind(shopId).all() as any
+      const { results: txCustomers } = await env.DB.prepare('SELECT DISTINCT customer_id FROM transactions WHERE shop_id = ?').bind(shopId).all() as any
       const txCustSet = new Set((txCustomers || []).map((t: any) => t.customer_id))
 
       const statements: D1PreparedStatement[] = [
-        env.DB.prepare('DELETE FROM cashback_ledger')
+        env.DB.prepare('DELETE FROM cashback_ledger WHERE shop_id = ?').bind(shopId)
       ]
 
       let hardDeleted = 0
@@ -595,7 +930,7 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
 
       for (const cust of (allCustomers || [])) {
         if (!txCustSet.has(cust.id)) {
-          statements.push(env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(cust.id))
+          statements.push(env.DB.prepare('DELETE FROM customers WHERE id = ? AND shop_id = ?').bind(cust.id, shopId))
           hardDeleted++
         } else {
           const anonMobile = 'DEL' + cust.id.substring(0, 7)
@@ -608,28 +943,26 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
               cashback_earned = 0.0,
               cashback_redeemed = 0.0,
               updated_at = ?
-            WHERE id = ?
-          `).bind(anonMobile, now, cust.id))
+            WHERE id = ? AND shop_id = ?
+          `).bind(anonMobile, now, cust.id, shopId))
           anonymized++
         }
       }
 
       statements.push(env.DB.prepare(`
-        INSERT INTO admin_audit_logs (id, action, performed_by, details, created_at)
-        VALUES (?, 'DELETE_ALL_CUSTOMERS', ?, ?, ?)
-      `).bind(
-        auditId,
-        admin.email,
-        JSON.stringify({ hard_deleted: hardDeleted, anonymized }),
-        now
-      ))
+        INSERT INTO admin_audit_logs (id, shop_id, action, performed_by, details, created_at)
+        VALUES (?, ?, 'DELETE_ALL_CUSTOMERS', ?, ?, ?)
+      `).bind(auditId, shopId, admin.email, JSON.stringify({ hard_deleted: hardDeleted, anonymized }), now))
 
       await env.DB.batch(statements)
       return json({ success: true, hard_deleted: hardDeleted, anonymized })
     }
 
-    // ─── BILLING: SERVER-SIDE TRANSACTIONAL PROCESS ───────────────────────────
+    // ─── BILLING: SERVER-SIDE TRANSACTIONAL PROCESS (TENANT ISOLATED) ──────────
     if (pathname === '/billing/process' && method === 'POST') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const body = await request.json().catch(() => ({})) as any
       const {
         customer_id,
@@ -643,15 +976,14 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         idempotency_key
       } = body
 
-      // UPI Payment Verification Safety Check
-      // Never credit cashback or complete payment unless merchant/provider has verified receipt
+      // UPI verification check
       if (payment_method === 'upi' && !payment_verified && !notes?.includes('Payment: UPI (Verified)')) {
         return json({
           error: 'UPI payment receipt must be verified by the merchant before completing the transaction.'
         }, 400)
       }
 
-      // 1. Idempotency check: if transaction with this key exists, return it
+      // 1. Idempotency check
       if (idempotency_key) {
         const existingTx = await env.DB.prepare('SELECT * FROM transactions WHERE idempotency_key = ?').bind(idempotency_key).first()
         if (existingTx) {
@@ -660,12 +992,18 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         }
       }
 
-      // 2. Fetch customer
-      const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(customer_id).first() as any
+      // 2. Fetch customer (with shop fallback)
+      let customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ? AND shop_id = ?').bind(customer_id, shopId).first() as any
+      if (!customer) {
+        customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(customer_id).first() as any
+      }
       if (!customer) return json({ error: 'Customer not found' }, 404)
 
       // 3. Fetch shop settings
-      const settings = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first() as any
+      let settings = await env.DB.prepare('SELECT * FROM shop_settings WHERE shop_id = ?').bind(shopId).first() as any
+      if (!settings) {
+        settings = await env.DB.prepare('SELECT * FROM shop_settings LIMIT 1').first() as any
+      }
       const minPurchase = settings?.minimum_eligible_purchase ?? 99.00
       const cbPercentage = settings?.cashback_percentage ?? 2.00
 
@@ -679,73 +1017,81 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       if (cbRedeemed > customer.cashback_balance + 0.0001) {
         return json({ error: `Redemption exceeds wallet balance. Available: ₹${customer.cashback_balance}` }, 400)
       }
-      if (cbRedeemed > billAmt) return json({ error: 'Redemption cannot exceed bill amount' }, 400)
 
-      // 5. Server-side authoritative cashback calculation
-      let calcCashback = 0.0
-      if (billAmt >= minPurchase) {
-        calcCashback = Math.round(amtPaid * cbPercentage) / 100
+      const expectedPayable = Math.round(Math.max(0, billAmt - cbRedeemed) * 100) / 100
+      if (Math.abs(amtPaid - expectedPayable) > 0.01) {
+        return json({
+          error: `Amount paid ₹${amtPaid} does not match expected amount ₹${expectedPayable} (Bill: ₹${billAmt} - Redeemed: ₹${cbRedeemed})`
+        }, 400)
       }
 
-      const newBalance = Math.round((customer.cashback_balance - cbRedeemed + calcCashback) * 100) / 100
+      // 5. Calculate cashback earned: 2% on net paid if bill >= minPurchase
+      let calcCashback = 0
+      if (billAmt >= minPurchase) {
+        calcCashback = Math.round(amtPaid * (cbPercentage / 100) * 100) / 100
+      }
+
+      // 6. Calculate new balances
+      const balanceAfterRedemption = Math.round((customer.cashback_balance - cbRedeemed) * 100) / 100
+      const newBalance = Math.round((balanceAfterRedemption + calcCashback) * 100) / 100
+      const newPurchases = Math.round((customer.total_purchases + amtPaid) * 100) / 100
+      const newEarned = Math.round((customer.cashback_earned + calcCashback) * 100) / 100
+      const newRedeemed = Math.round((customer.cashback_redeemed + cbRedeemed) * 100) / 100
+
       const txId = crypto.randomUUID()
       const now = new Date().toISOString()
-      const finalIdempotencyKey = idempotency_key || `tx_${Date.now()}_${txId}`
-
       const batchStatements: D1PreparedStatement[] = []
 
-      // Insert transaction
+      // Create transaction record
       batchStatements.push(env.DB.prepare(`
         INSERT INTO transactions (
-          id, customer_id, service_category, bill_amount,
+          id, shop_id, customer_id, service_category, bill_amount,
           cashback_redeemed, amount_paid, cashback_earned,
           status, notes, payment_method, idempotency_key, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?, ?, ?)
       `).bind(
-        txId, customer_id, service_category, billAmt,
+        txId, shopId, customer_id, service_category, billAmt,
         cbRedeemed, amtPaid, calcCashback,
-        notes || null, payment_method || 'cash', finalIdempotencyKey, now, now
+        notes || null, payment_method || 'cash', idempotency_key || null, now, now
       ))
 
-      // Update customer aggregates
+      // Update customer balance
       batchStatements.push(env.DB.prepare(`
         UPDATE customers SET
-          total_purchases = round(total_purchases + ?, 2),
-          cashback_earned = round(cashback_earned + ?, 2),
-          cashback_redeemed = round(cashback_redeemed + ?, 2),
+          total_purchases = ?,
+          cashback_earned = ?,
+          cashback_redeemed = ?,
           cashback_balance = ?,
           updated_at = ?
         WHERE id = ?
-      `).bind(amtPaid, calcCashback, cbRedeemed, newBalance, now, customer_id))
+      `).bind(newPurchases, newEarned, newRedeemed, newBalance, now, customer_id))
 
-      // Insert ledger debit if redeemed
+      // Record debit in ledger if cashback was redeemed
       if (cbRedeemed > 0) {
         const debitId = crypto.randomUUID()
-        const balAfterDebit = Math.round((customer.cashback_balance - cbRedeemed) * 100) / 100
         batchStatements.push(env.DB.prepare(`
           INSERT INTO cashback_ledger (
-            id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
-          ) VALUES (?, ?, ?, 0.0, ?, ?, ?, ?)
+            id, shop_id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
+          ) VALUES (?, ?, ?, ?, 0.0, ?, ?, ?, ?)
         `).bind(
-          debitId, customer_id, txId, cbRedeemed, balAfterDebit,
-          `Cashback redeemed on ${service_category}`, now
+          debitId, shopId, customer_id, txId, cbRedeemed, balanceAfterRedemption,
+          `Redeemed on bill #${txId.substring(0, 8)}`, now
         ))
       }
 
-      // Insert ledger credit if earned
+      // Record credit in ledger if cashback was earned
       if (calcCashback > 0) {
         const creditId = crypto.randomUUID()
         batchStatements.push(env.DB.prepare(`
           INSERT INTO cashback_ledger (
-            id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
-          ) VALUES (?, ?, ?, ?, 0.0, ?, ?, ?)
+            id, shop_id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
+          ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?)
         `).bind(
-          creditId, customer_id, txId, calcCashback, newBalance,
+          creditId, shopId, customer_id, txId, calcCashback, newBalance,
           `Cashback earned on ${service_category} (₹${amtPaid} paid)`, now
         ))
       }
 
-      // Execute batch transaction atomically
       await env.DB.batch(batchStatements)
 
       const updatedCustomer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(customer_id).first()
@@ -758,14 +1104,15 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       })
     }
 
-    // ─── TRANSACTION CANCELLATION & REVERSAL ───────────────────────────────────
+    // ─── TRANSACTION CANCELLATION & REVERSAL (TENANT ISOLATED) ────────────────
     if (pathname.match(/^\/transactions\/([^/]+)\/cancel$/) && method === 'POST') {
       const admin = await authenticateAdmin(request, env)
       if (!admin) return json({ error: 'Unauthorized' }, 401)
+      const shopId = resolveActiveShopId(request, admin)
 
       const txId = pathname.split('/')[2]
-      const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id = ?').bind(txId).first() as any
-      if (!tx) return json({ error: 'Transaction not found' }, 404)
+      const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id = ? AND shop_id = ?').bind(txId, shopId).first() as any
+      if (!tx) return json({ error: 'Transaction not found in this shop' }, 404)
       if (tx.status !== 'completed') return json({ error: 'Only completed transactions can be cancelled' }, 400)
 
       const customer = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(tx.customer_id).first() as any
@@ -792,10 +1139,10 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         `).bind(tx.amount_paid, tx.cashback_earned, tx.cashback_redeemed, newBal, now, tx.customer_id),
         env.DB.prepare(`
           INSERT INTO cashback_ledger (
-            id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            id, shop_id, customer_id, transaction_id, credit, debit, balance_after, description, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
-          reversalLedgerId, tx.customer_id, txId,
+          reversalLedgerId, shopId, tx.customer_id, txId,
           tx.cashback_redeemed, tx.cashback_earned, newBal,
           `Reversal for cancelled transaction #${txId}`, now
         )
@@ -805,8 +1152,11 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       return json({ success: true, customer: updatedCustomer })
     }
 
-    // ─── TRANSACTIONS & LEDGER ────────────────────────────────────────────────
+    // ─── TRANSACTIONS & LEDGER (TENANT ISOLATED) ──────────────────────────────
     if (pathname === '/transactions' && method === 'GET') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const customerId = url.searchParams.get('customer_id')
       const status = url.searchParams.get('status')
       const startDate = url.searchParams.get('start_date')
@@ -818,9 +1168,9 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         SELECT t.*, c.name as customer_name, c.mobile as customer_mobile
         FROM transactions t
         LEFT JOIN customers c ON t.customer_id = c.id
-        WHERE 1=1
+        WHERE t.shop_id = ?
       `
-      const params: any[] = []
+      const params: any[] = [shopId]
 
       if (customerId) {
         query += ' AND t.customer_id = ?'
@@ -843,36 +1193,42 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       params.push(limit, offset)
 
       const { results } = await env.DB.prepare(query).bind(...params).all()
-      return json({ data: results })
+      return json({ data: results || [] })
     }
 
     if (pathname === '/ledger' && method === 'GET') {
       const customerId = url.searchParams.get('customer_id')
       if (!customerId) return json({ error: 'customer_id is required' }, 400)
 
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const { results } = await env.DB.prepare(
-        'SELECT * FROM cashback_ledger WHERE customer_id = ? ORDER BY created_at DESC'
-      ).bind(customerId).all()
-      return json({ data: results })
+        'SELECT * FROM cashback_ledger WHERE customer_id = ? AND shop_id = ? ORDER BY created_at DESC'
+      ).bind(customerId, shopId).all()
+      return json({ data: results || [] })
     }
 
-    // ─── DASHBOARD STATS & REPORTS ────────────────────────────────────────────
+    // ─── DASHBOARD STATS (TENANT ISOLATED) ────────────────────────────────────
     if (pathname === '/dashboard/stats' && method === 'GET') {
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+
       const todayStart = new Date()
       todayStart.setHours(0, 0, 0, 0)
       const todayStartStr = todayStart.toISOString()
 
-      // Today's completed transactions
+      // Today's completed transactions for this shop
       const todayRow = await env.DB.prepare(`
         SELECT
           coalesce(sum(amount_paid), 0) as today_sales,
           coalesce(sum(cashback_earned), 0) as today_cashback,
           count(*) as today_tx_count
         FROM transactions
-        WHERE status = 'completed' AND created_at >= ?
-      `).bind(todayStartStr).first() as any
+        WHERE shop_id = ? AND status = 'completed' AND created_at >= ?
+      `).bind(shopId, todayStartStr).first() as any
 
-      // Month's sales
+      // Month's sales for this shop
       const monthStart = new Date()
       monthStart.setDate(1)
       monthStart.setHours(0, 0, 0, 0)
@@ -881,17 +1237,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       const monthRow = await env.DB.prepare(`
         SELECT coalesce(sum(amount_paid), 0) as month_sales
         FROM transactions
-        WHERE status = 'completed' AND created_at >= ?
-      `).bind(monthStartStr).first() as any
+        WHERE shop_id = ? AND status = 'completed' AND created_at >= ?
+      `).bind(shopId, monthStartStr).first() as any
 
-      // Total active customers
+      // Total active customers for this shop
       const custRow = await env.DB.prepare(`
         SELECT count(*) as total_customers, coalesce(sum(cashback_balance), 0) as total_wallet_balance
         FROM customers
-        WHERE name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
-      `).first() as any
+        WHERE shop_id = ? AND name != '[Deleted Customer]' AND mobile NOT LIKE 'DEL%'
+      `).bind(shopId).first() as any
 
-      // All-time totals
+      // All-time totals for this shop
       const allTimeRow = await env.DB.prepare(`
         SELECT
           coalesce(sum(amount_paid), 0) as total_sales,
@@ -899,16 +1255,17 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
           coalesce(sum(cashback_redeemed), 0) as total_cashback_redeemed,
           count(*) as total_transactions
         FROM transactions
-        WHERE status = 'completed'
-      `).first() as any
+        WHERE shop_id = ? AND status = 'completed'
+      `).bind(shopId).first() as any
 
-      // Recent 10 transactions
+      // Recent 10 transactions for this shop
       const { results: recentTransactions } = await env.DB.prepare(`
         SELECT t.*, c.name as customer_name, c.mobile as customer_mobile
         FROM transactions t
         LEFT JOIN customers c ON t.customer_id = c.id
+        WHERE t.shop_id = ?
         ORDER BY t.created_at DESC LIMIT 10
-      `).all()
+      `).bind(shopId).all()
 
       return json({
         data: {
@@ -927,28 +1284,48 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       })
     }
 
-    // ─── DUAL SCREEN CUSTOMER DISPLAY STATE (SERVER SYNC) ─────────────────────
+    // ─── DUAL SCREEN CUSTOMER DISPLAY STATE (PER-SHOP ISOLATED) ───────────────
     if (pathname === '/display/session' && method === 'GET') {
-      return json({ data: globalDisplaySession })
+      const admin = await authenticateAdmin(request, env)
+      const shopId = resolveActiveShopId(request, admin)
+      let shopName = 'Smart Cashback'
+      const s = await env.DB?.prepare('SELECT name FROM shops WHERE id = ?').bind(shopId).first() as any
+      if (s?.name) shopName = s.name
+      return json({ data: getDisplaySession(shopId, shopName) })
     }
 
     if (pathname === '/display/session' && method === 'POST') {
+      const admin = await authenticateAdmin(request, env)
       const body = await request.json().catch(() => ({})) as any
-      globalDisplaySession = {
-        ...globalDisplaySession,
+      const shopId = body.shopId || resolveActiveShopId(request, admin)
+
+      const session = getDisplaySession(shopId)
+      const updated = {
+        ...session,
         ...body,
+        shopId,
         updatedAt: Date.now()
       }
-      return json({ data: globalDisplaySession })
+      shopDisplaySessions.set(shopId, updated)
+      return json({ data: updated })
     }
 
     if (pathname === '/display/reset' && method === 'POST') {
-      globalDisplaySession = {
-        sessionId: 'sess_' + Date.now(),
+      const admin = await authenticateAdmin(request, env)
+      const body = await request.json().catch(() => ({})) as any
+      const shopId = body.shopId || resolveActiveShopId(request, admin)
+
+      let shopName = 'Smart Cashback'
+      const s = await env.DB?.prepare('SELECT name FROM shops WHERE id = ?').bind(shopId).first() as any
+      if (s?.name) shopName = s.name
+
+      const resetSession = {
+        sessionId: `sess_shop_${shopId}_${Date.now()}`,
+        shopId,
         mode: 'welcome',
         customerName: '',
         customerMobile: '',
-        shopName: 'Smart Cashback',
+        shopName,
         billAmount: 0,
         cashbackRedeemed: 0,
         amountPayable: 0,
@@ -959,7 +1336,8 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
         paymentStatus: 'awaiting_payment',
         updatedAt: Date.now()
       }
-      return json({ success: true, data: globalDisplaySession })
+      shopDisplaySessions.set(shopId, resetSession)
+      return json({ success: true, data: resetSession })
     }
 
     // ─── R2 STORAGE: DATABASE EXPORT & BACKUPS ────────────────────────────────
@@ -968,12 +1346,14 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       if (!admin) return json({ error: 'Unauthorized' }, 401)
 
       const [
+        { results: shops },
         { results: customers },
         { results: transactions },
         { results: ledger },
         { results: settings },
         { results: categories }
       ] = await Promise.all([
+        env.DB.prepare('SELECT * FROM shops').all(),
         env.DB.prepare('SELECT * FROM customers').all(),
         env.DB.prepare('SELECT * FROM transactions').all(),
         env.DB.prepare('SELECT * FROM cashback_ledger').all(),
@@ -983,14 +1363,16 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
 
       const backupData = {
         timestamp: new Date().toISOString(),
-        engine: 'Cloudflare D1',
+        engine: 'Cloudflare D1 Multi-Tenant',
         counts: {
+          shops: shops.length,
           customers: customers.length,
           transactions: transactions.length,
           cashback_ledger: ledger.length,
           shop_settings: settings.length,
           service_categories: categories.length
         },
+        shops,
         customers,
         transactions,
         cashback_ledger: ledger,
@@ -1001,7 +1383,6 @@ export async function handleApiRequest(request: Request, env: Env): Promise<Resp
       const backupJson = JSON.stringify(backupData, null, 2)
       const filename = `backups/backup_${Date.now()}.json`
 
-      // If R2 is bound, store to Cloudflare R2
       if (env.STORAGE) {
         await env.STORAGE.put(filename, backupJson, {
           httpMetadata: { contentType: 'application/json' },

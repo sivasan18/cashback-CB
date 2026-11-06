@@ -5,6 +5,8 @@ export interface User {
   id: string
   email: string
   role?: string
+  shop_id?: number | null
+  shop_name?: string
 }
 
 export interface Session {

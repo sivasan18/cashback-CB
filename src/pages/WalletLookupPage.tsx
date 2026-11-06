@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Search, Wallet, Receipt, Gift, ShoppingBag,
-  Users, ChevronRight
+  Users, ChevronRight, Store
 } from 'lucide-react'
 import { db } from '@/lib/db'
+import { cloudflareApi } from '@/lib/api'
 import { formatCurrency, validateMobile, normalizeMobile } from '@/lib/cashback'
 import { format } from 'date-fns'
 import type { Customer, Transaction } from '@/types'
@@ -33,6 +34,16 @@ export default function WalletLookupPage() {
   const [mobile, setMobile] = useState(searchParams.get('mobile') ?? '')
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [multiWallets, setMultiWallets] = useState<Array<{
+    shop_id: number
+    shop_name: string
+    shop_icon?: string
+    customer_name: string
+    cashback_balance: number
+    total_purchases: number
+    cashback_earned: number
+    cashback_redeemed: number
+  }>>([])
   const [searched, setSearched] = useState(false)
   const [loadingLookup, setLoadingLookup] = useState(false)
   const [mobileError, setMobileError] = useState('')
@@ -96,6 +107,18 @@ export default function WalletLookupPage() {
       .maybeSingle()
 
     setCustomer(cust as Customer | null)
+
+    // Multi-Shop Food Court Wallet Lookup
+    try {
+      const { data: multi } = await cloudflareApi.wallet.multiLookup(m)
+      if (multi?.wallets) {
+        setMultiWallets(multi.wallets)
+      } else {
+        setMultiWallets([])
+      }
+    } catch {
+      setMultiWallets([])
+    }
 
     if (cust) {
       const { data: txs } = await db
@@ -405,6 +428,42 @@ export default function WalletLookupPage() {
                   </p>
                 </div>
               </div>
+
+              {/* Multi-Shop Food Court Wallets */}
+              {multiWallets.length > 0 && (
+                <div className="page-card p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-dark-800 pb-2">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Store size={16} className="text-brand-600 dark:text-brand-400" />
+                      Food Court Wallets ({multiWallets.length} active {multiWallets.length === 1 ? 'shop' : 'shops'})
+                    </h3>
+                    <span className="text-xs font-semibold text-brand-600 dark:text-brand-400">
+                      Total Food Court Balance: {formatCurrency(multiWallets.reduce((acc, w) => acc + (w.cashback_balance || 0), 0))}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {multiWallets.map(w => (
+                      <div key={w.shop_id} className="p-3.5 rounded-xl bg-slate-50 dark:bg-dark-900/60 border border-slate-200/80 dark:border-dark-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-950/80 text-brand-600 dark:text-brand-400 font-bold flex items-center justify-center text-xs">
+                            {w.shop_id.toString().padStart(2, '0')}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-xs text-slate-900 dark:text-white">{w.shop_name}</p>
+                            <p className="text-[10px] text-slate-400">Earned: {formatCurrency(w.cashback_earned)}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-sm font-bold ${w.cashback_balance > 0 ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`}>
+                            {formatCurrency(w.cashback_balance)}
+                          </span>
+                          <p className="text-[10px] text-slate-400">Available</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

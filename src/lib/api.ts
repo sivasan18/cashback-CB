@@ -3,7 +3,7 @@
  * Typed client communicating with Cloudflare Workers / Pages Functions at /api/*
  */
 
-import type { Customer, Transaction, CashbackLedger, ShopSettings, ServiceCategory } from '@/types'
+import type { Customer, Transaction, CashbackLedger, ShopSettings, ServiceCategory, Shop } from '@/types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api'
 const TOKEN_KEY = 'smart_cashback_cf_token'
@@ -143,6 +143,38 @@ export const cloudflareApi = {
       return request<{ success: boolean; hard_deleted: number; anonymized: number }>('/customers/delete-all', {
         method: 'POST'
       })
+    },
+
+    async lookupName(mobile: string) {
+      return request<{ found: boolean; name: string | null }>(`/customers/lookup-name?mobile=${encodeURIComponent(mobile)}`)
+    }
+  },
+
+  wallet: {
+    async multiLookup(mobile: string) {
+      return request<{
+        mobile: string
+        customer_name: string | null
+        total_balance: number
+        total_shops: number
+        wallets: Array<{
+          shop_id: number
+          shop_name: string
+          shop_icon?: string
+          customer_name: string
+          cashback_balance: number
+          total_purchases: number
+          cashback_earned: number
+          cashback_redeemed: number
+          updated_at: string
+        }>
+      }>(`/wallet/multi-lookup?mobile=${encodeURIComponent(mobile)}`)
+    }
+  },
+
+  shops: {
+    async list() {
+      return request<Shop[]>('/shops')
     }
   },
 
@@ -238,18 +270,70 @@ export const cloudflareApi = {
   },
 
   display: {
-    async getSession() {
-      return request<any>('/display/session')
+    async getSession(shopId?: number) {
+      const qs = shopId ? `?shop_id=${shopId}` : ''
+      return request<any>(`/display/session${qs}`)
     },
-    async updateSession(data: any) {
-      return request<any>('/display/session', {
+    async updateSession(data: any, shopId?: number) {
+      const qs = shopId ? `?shop_id=${shopId}` : ''
+      return request<any>(`/display/session${qs}`, {
         method: 'POST',
-        body: JSON.stringify(data)
+        body: JSON.stringify({ ...data, shopId })
       })
     },
-    async reset() {
-      return request<any>('/display/reset', {
-        method: 'POST'
+    async reset(shopId?: number) {
+      const qs = shopId ? `?shop_id=${shopId}` : ''
+      return request<any>(`/display/reset${qs}`, {
+        method: 'POST',
+        body: JSON.stringify({ shopId })
+      })
+    }
+  },
+
+  owner: {
+    async getOverview() {
+      return request<{
+        totals: {
+          total_sales: number
+          total_transactions: number
+          total_cashback_issued: number
+          total_cashback_redeemed: number
+          today_sales: number
+          today_transactions: number
+          unique_customers: number
+          total_wallets: number
+          total_wallet_liability: number
+        }
+        shops: Array<{
+          id: number
+          name: string
+          slug: string
+          login_id: string
+          icon: string
+          is_active: number
+          total_sales: number
+          total_transactions: number
+          cashback_issued: number
+          cashback_redeemed: number
+          today_sales: number
+          customer_count: number
+          wallet_balance: number
+        }>
+        categoryBreakdown: Array<{
+          category: string
+          transaction_count: number
+          total_sales: number
+          cashback_earned: number
+        }>
+      }>('/owner/overview')
+    },
+    async getShops() {
+      return request<Shop[]>('/owner/shops')
+    },
+    async updateShop(id: number, data: { name?: string; is_active?: boolean; new_password?: string }) {
+      return request<Shop>(`/owner/shops/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
       })
     }
   },
